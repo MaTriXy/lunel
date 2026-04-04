@@ -11,6 +11,7 @@ import {
   ChevronDown,
   HelpCircle,
   Home,
+  LoaderCircle,
   MessageCircle,
   PencilLine,
   Search,
@@ -19,8 +20,9 @@ import {
 } from "lucide-react-native";
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
-  ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
   Image,
   InteractionManager,
   Keyboard,
@@ -32,6 +34,29 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+function SpinningLoader({ color, opacity = 1 }: { color: string; opacity?: number }) {
+  const rotation = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.timing(rotation, {
+        toValue: 1,
+        duration: 900,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    ).start();
+  }, [rotation]);
+
+  const rotate = rotation.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
+
+  return (
+    <Animated.View style={{ transform: [{ rotate }], opacity }}>
+      <LoaderCircle size={15} color={color} strokeWidth={2} />
+    </Animated.View>
+  );
+}
 
 const HIDE_SIDEBAR_SESSION_PLUGIN_IDS = new Set([
   "search",
@@ -266,7 +291,7 @@ export default function DrawerContent(props: DrawerContentComponentProps) {
 
               {reg?.loading ? (
                 <View style={styles.emptyState}>
-                  <ActivityIndicator size="small" color={colors.fg.muted} />
+                  <SpinningLoader color={colors.fg.muted} opacity={0.6} />
                   <Text style={[styles.emptyText, { color: colors.fg.subtle, fontFamily: fonts.sans.regular }]}>
                     Loading sessions...
                   </Text>
@@ -327,7 +352,10 @@ export default function DrawerContent(props: DrawerContentComponentProps) {
                             })}
                             {isLoading && (
                               <View style={styles.viewAllRow}>
-                                <ActivityIndicator size="small" color={colors.fg.muted} />
+                                <SpinningLoader color={colors.fg.muted} opacity={0.6} />
+                                <Text style={[styles.viewAllText, { color: colors.fg.muted, fontFamily: fonts.sans.regular, opacity: 0.6 }]}>
+                                  Loading...
+                                </Text>
                               </View>
                             )}
                             {hasMore && !isLoading && (

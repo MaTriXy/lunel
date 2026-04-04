@@ -318,10 +318,10 @@ export interface ThemeTypography {
 }
 
 export const typography: ThemeTypography = {
-  caption: 10,
+  caption: 11,
   subHeading: 13,
   body: 14,
-  heading: 16,
+  heading: 15,
 };
 
 // =============================================================================
