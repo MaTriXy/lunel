@@ -14,7 +14,7 @@ const TABLET_BREAKPOINT = 768;
 const TERMS_URL = "https://app.lunel.dev/terms";
 const PRIVACY_URL = "https://app.lunel.dev/privacy";
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
-const LOGO_SOURCE = require("@/assets/images/icon-bg.png");
+const LOGO_SOURCE = require("@/assets/images/icon.png");
 
 function OpenActionIcon({ size = 18, color = "#111111" }: { size?: number; color?: string }) {
   return (
