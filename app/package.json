@@ -104,7 +104,7 @@
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
     "react-native-svg": "^15.12.1",
-    "react-native-tcp-socket": "^6.3.1",
+    "react-native-tcp-socket": "github:sohzm/react-native-tcp-socket#e35b9a9083d27883c2c01c41bdbf9895a830db5d",
     "react-native-web": "~0.21.0",
     "react-native-webview": "13.15.0",
     "react-native-webview-crypto": "^0.0.28",

@@ -30,6 +30,10 @@ interface TunnelInfo {
   remotePort: number | null;
   localAddress: string | null;
   localPort: number | null;
+  clientPreview: string;
+  serverPreview: string;
+  clientPreviewLogged: boolean;
+  serverPreviewLogged: boolean;
   pendingWriteCount: number;
   remoteFinPending: boolean;
   localEnded: boolean;
@@ -74,6 +78,7 @@ const PROXY_WS_CONNECT_RETRY_ATTEMPTS = 1;
 const PROXY_WS_RETRY_JITTER_MIN_MS = 200;
 const PROXY_WS_RETRY_JITTER_MAX_MS = 500;
 const PROXY_TUNNEL_LINGER_MS = 1_200;
+const CLIENT_PROTOCOL_SNIFF_TIMEOUT_MS = 300;
 
 type ProxyControlAction = 'fin' | 'rst';
 interface ProxyControlFrame {
@@ -267,6 +272,252 @@ function sendProxyControl(tunnel: TunnelInfo, action: ProxyControlAction, reason
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
   const frame: ProxyControlFrame = { v: 1, t: 'proxy_ctrl', action, reason };
   ws.send(JSON.stringify(frame));
+}
+
+function normalizeChunkToUint8Array(data: any): Uint8Array | null {
+  if (!data) return null;
+  if (data instanceof Uint8Array) return data;
+  if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  if (data.buffer instanceof ArrayBuffer) {
+    return new Uint8Array(data.buffer, data.byteOffset || 0, data.byteLength || data.length || 0);
+  }
+  return null;
+}
+
+function decodePreview(bytes: Uint8Array): string {
+  try {
+    return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+  } catch {
+    return '';
+  }
+}
+
+function extractHttpPreview(preview: string): { startLine: string; headers: Record<string, string> } | null {
+  const headerEnd = preview.indexOf('\r\n\r\n') >= 0
+    ? preview.indexOf('\r\n\r\n')
+    : preview.indexOf('\n\n');
+  if (headerEnd < 0) return null;
+
+  const rawHeaderBlock = preview.slice(0, headerEnd);
+  const lines = rawHeaderBlock.split(/\r?\n/).filter(Boolean);
+  if (lines.length === 0) return null;
+
+  const startLine = lines[0];
+  const isHttpRequest = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+\S+\s+HTTP\/\d/i.test(startLine);
+  const isHttpResponse = /^HTTP\/\d\.\d\s+\d{3}\b/i.test(startLine);
+  if (!isHttpRequest && !isHttpResponse) return null;
+
+  const headers: Record<string, string> = {};
+  for (const line of lines.slice(1)) {
+    const separatorIndex = line.indexOf(':');
+    if (separatorIndex <= 0) continue;
+    const key = line.slice(0, separatorIndex).trim().toLowerCase();
+    if (!key) continue;
+    headers[key] = line.slice(separatorIndex + 1).trim();
+  }
+
+  return { startLine, headers };
+}
+
+type InitialClientProtocol = 'http_plaintext' | 'tls_client_hello';
+
+function concatUint8Arrays(chunks: Uint8Array[]): Uint8Array {
+  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+  const combined = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    combined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return combined;
+}
+
+function classifyInitialClientTraffic(chunks: Uint8Array[]): 'insufficient_data_yet' | 'unsupported' | InitialClientProtocol {
+  const bytes = concatUint8Arrays(chunks);
+  if (bytes.byteLength === 0) return 'insufficient_data_yet';
+
+  if (bytes[0] === 0x16) {
+    if (bytes.byteLength < 6) return 'insufficient_data_yet';
+    const major = bytes[1];
+    const minor = bytes[2];
+    const handshakeType = bytes[5];
+    const looksLikeTlsVersion = major === 0x03 && minor >= 0x00 && minor <= 0x04;
+    if (looksLikeTlsVersion && handshakeType === 0x01) {
+      return 'tls_client_hello';
+    }
+    return 'unsupported';
+  }
+
+  const preview = decodePreview(bytes.slice(0, Math.min(bytes.byteLength, 2048)));
+  const newlineIndex = preview.indexOf('\n');
+  if (newlineIndex < 0) {
+    if (preview.length < 16) return 'insufficient_data_yet';
+    return 'unsupported';
+  }
+
+  const requestLine = preview.slice(0, newlineIndex).replace(/\r$/, '');
+  if (/^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+\S+\s+HTTP\/1\.[01]$/i.test(requestLine)) {
+    return 'http_plaintext';
+  }
+
+  return 'unsupported';
+}
+
+async function sniffInitialClientProtocol(
+  tcpSocket: any,
+  tunnelId: string,
+  port: number,
+): Promise<{ protocol: InitialClientProtocol; bufferedChunks: Uint8Array[] }> {
+  return await new Promise((resolve, reject) => {
+    const bufferedChunks: Uint8Array[] = [];
+    let settled = false;
+
+    const finish = (result: { protocol: InitialClientProtocol; bufferedChunks: Uint8Array[] } | null, error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      tcpSocket.removeListener('data', handleData);
+      tcpSocket.removeListener('end', handleEnd);
+      tcpSocket.removeListener('close', handleClose);
+      tcpSocket.removeListener('error', handleError);
+      if (result) {
+        try {
+          tcpSocket.pause();
+        } catch {
+          // ignore
+        }
+        resolve(result);
+        return;
+      }
+      reject(error ?? new Error('initial client protocol sniff failed'));
+    };
+
+    const handleData = (data: any) => {
+      const bytes = normalizeChunkToUint8Array(data);
+      if (!bytes) return;
+      bufferedChunks.push(Uint8Array.from(bytes));
+      const classification = classifyInitialClientTraffic(bufferedChunks);
+      if (classification === 'http_plaintext' || classification === 'tls_client_hello') {
+        logger.info('proxy', 'classified initial localhost client protocol', {
+          tunnelId,
+          port,
+          protocol: classification,
+        });
+        finish({ protocol: classification, bufferedChunks });
+        return;
+      }
+      if (classification === 'unsupported') {
+        finish(null, Object.assign(new Error('Unsupported localhost client protocol'), { code: 'EPROTONOSUPPORT' }));
+      }
+    };
+
+    const handleEnd = () => {
+      finish(null, Object.assign(new Error('Localhost client closed before sending supported protocol bytes'), { code: 'ECONNRESET' }));
+    };
+
+    const handleClose = () => {
+      finish(null, Object.assign(new Error('Localhost client closed during protocol sniff'), { code: 'ECONNRESET' }));
+    };
+
+    const handleError = () => {
+      finish(null, Object.assign(new Error('Localhost client socket error during protocol sniff'), { code: 'ECONNRESET' }));
+    };
+
+    const timeout = setTimeout(() => {
+      finish(null, Object.assign(new Error('Localhost client did not send supported protocol bytes in time'), { code: 'ETIMEOUT' }));
+    }, CLIENT_PROTOCOL_SNIFF_TIMEOUT_MS);
+
+    tcpSocket.on('data', handleData);
+    tcpSocket.on('end', handleEnd);
+    tcpSocket.on('close', handleClose);
+    tcpSocket.on('error', handleError);
+
+    try {
+      tcpSocket.resume();
+    } catch {
+      finish(null, Object.assign(new Error('Failed to resume localhost socket for protocol sniff'), { code: 'EIO' }));
+    }
+  });
+}
+
+function sendBufferedClientChunks(proxyWs: WebSocket, chunks: Uint8Array[]): void {
+  for (const chunk of chunks) {
+    proxyWs.send(chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength));
+  }
+}
+
+function maybeLogClientPayload(tunnel: TunnelInfo, chunk: Uint8Array): void {
+  if (tunnel.clientPreviewLogged) return;
+
+  if (tunnel.clientPreview.length < 4096) {
+    tunnel.clientPreview += decodePreview(chunk).slice(0, 4096 - tunnel.clientPreview.length);
+  }
+
+  const parsed = extractHttpPreview(tunnel.clientPreview);
+  if (parsed) {
+    tunnel.clientPreviewLogged = true;
+    logger.info('proxy', 'http request preview on localhost tunnel', {
+      tunnelId: tunnel.tunnelId,
+      port: tunnel.port,
+      remoteAddress: tunnel.remoteAddress,
+      remotePort: tunnel.remotePort,
+      startLine: parsed.startLine,
+      host: parsed.headers.host ?? null,
+      userAgent: parsed.headers['user-agent'] ?? null,
+      referer: parsed.headers.referer ?? null,
+      origin: parsed.headers.origin ?? null,
+      upgrade: parsed.headers.upgrade ?? null,
+      accept: parsed.headers.accept ?? null,
+    });
+    return;
+  }
+
+  if (tunnel.clientPreview.length >= 1024) {
+    tunnel.clientPreviewLogged = true;
+    logger.info('proxy', 'non-http client payload on localhost tunnel', {
+      tunnelId: tunnel.tunnelId,
+      port: tunnel.port,
+      remoteAddress: tunnel.remoteAddress,
+      remotePort: tunnel.remotePort,
+      preview: tunnel.clientPreview.slice(0, 160),
+    });
+  }
+}
+
+function maybeLogServerPayload(tunnel: TunnelInfo, chunk: Uint8Array): void {
+  if (tunnel.serverPreviewLogged) return;
+
+  if (tunnel.serverPreview.length < 4096) {
+    tunnel.serverPreview += decodePreview(chunk).slice(0, 4096 - tunnel.serverPreview.length);
+  }
+
+  const parsed = extractHttpPreview(tunnel.serverPreview);
+  if (parsed) {
+    tunnel.serverPreviewLogged = true;
+    logger.info('proxy', 'http response preview on localhost tunnel', {
+      tunnelId: tunnel.tunnelId,
+      port: tunnel.port,
+      remoteAddress: tunnel.remoteAddress,
+      remotePort: tunnel.remotePort,
+      startLine: parsed.startLine,
+      contentType: parsed.headers['content-type'] ?? null,
+      location: parsed.headers.location ?? null,
+      upgrade: parsed.headers.upgrade ?? null,
+      server: parsed.headers.server ?? null,
+    });
+    return;
+  }
+
+  if (tunnel.serverPreview.length >= 1024) {
+    tunnel.serverPreviewLogged = true;
+    logger.info('proxy', 'non-http server payload on localhost tunnel', {
+      tunnelId: tunnel.tunnelId,
+      port: tunnel.port,
+      remoteAddress: tunnel.remoteAddress,
+      remotePort: tunnel.remotePort,
+      preview: tunnel.serverPreview.slice(0, 160),
+    });
+  }
 }
 
 function maybeFinalizeTunnel(tunnelId: string): void {
@@ -491,6 +742,38 @@ async function handleIncomingConnection(tcpSocket: any, port: number): Promise<v
 
   // Pause TCP socket to buffer data until proxy WS is ready
   tcpSocket.pause();
+  const setupStartedAt = Date.now();
+  const getRemainingSetupMs = () => TUNNEL_SETUP_BUDGET_MS - (Date.now() - setupStartedAt);
+  logger.info('proxy', 'starting localhost proxy tunnel setup', {
+    tunnelId,
+    port,
+    remoteAddress: tcpSocket?.remoteAddress ?? null,
+    remotePort: tcpSocket?.remotePort ?? null,
+    localAddress: tcpSocket?.localAddress ?? null,
+    localPort: tcpSocket?.localPort ?? null,
+    gatewayWsUrl: activeGatewayWsUrl,
+    hasSessionCode: Boolean(sessionCode),
+    hasSessionPassword: Boolean(sessionPassword),
+  });
+
+  let initialProtocol: InitialClientProtocol;
+  let bufferedClientChunks: Uint8Array[];
+  try {
+    const sniffed = await sniffInitialClientProtocol(tcpSocket, tunnelId, port);
+    initialProtocol = sniffed.protocol;
+    bufferedClientChunks = sniffed.bufferedChunks;
+  } catch (error) {
+    logger.info('proxy', 'dropping localhost connection before proxy tunnel creation', {
+      tunnelId,
+      port,
+      remoteAddress: tcpSocket?.remoteAddress ?? null,
+      remotePort: tcpSocket?.remotePort ?? null,
+      error: error instanceof Error ? error.message : String(error),
+      code: error instanceof Error && 'code' in error ? (error as any).code ?? null : null,
+    });
+    tcpSocket.destroy();
+    return;
+  }
 
   const tunnel: TunnelInfo = {
     tunnelId,
@@ -502,6 +785,10 @@ async function handleIncomingConnection(tcpSocket: any, port: number): Promise<v
     remotePort: tcpSocket?.remotePort ?? null,
     localAddress: tcpSocket?.localAddress ?? null,
     localPort: tcpSocket?.localPort ?? null,
+    clientPreview: '',
+    serverPreview: '',
+    clientPreviewLogged: false,
+    serverPreviewLogged: false,
     pendingWriteCount: 0,
     remoteFinPending: false,
     localEnded: false,
@@ -511,19 +798,6 @@ async function handleIncomingConnection(tcpSocket: any, port: number): Promise<v
     closing: false,
   };
   activeTunnels.set(tunnelId, tunnel);
-  const setupStartedAt = Date.now();
-  const getRemainingSetupMs = () => TUNNEL_SETUP_BUDGET_MS - (Date.now() - setupStartedAt);
-  logger.info('proxy', 'starting localhost proxy tunnel setup', {
-    tunnelId,
-    port,
-    remoteAddress: tunnel.remoteAddress,
-    remotePort: tunnel.remotePort,
-    localAddress: tunnel.localAddress,
-    localPort: tunnel.localPort,
-    gatewayWsUrl: activeGatewayWsUrl,
-    hasSessionCode: Boolean(sessionCode),
-    hasSessionPassword: Boolean(sessionPassword),
-  });
 
   try {
     const controlRemainingMs = getRemainingSetupMs();
@@ -561,6 +835,7 @@ async function handleIncomingConnection(tcpSocket: any, port: number): Promise<v
       port,
       gatewayBase,
       authMode: sessionPassword ? 'password' : 'code',
+      initialProtocol,
     });
     const proxyWs = await connectProxyWsWithRetry(proxyWsUrl, getRemainingSetupMs);
     tunnel.proxyWs = proxyWs;
@@ -599,6 +874,11 @@ async function handleIncomingConnection(tcpSocket: any, port: number): Promise<v
 
     // Step 3: Pipe TCP -> WS (binary)
     tcpSocket.on('data', (data: any) => {
+      const current = activeTunnels.get(tunnelId);
+      const chunk = normalizeChunkToUint8Array(data);
+      if (current && chunk) {
+        maybeLogClientPayload(current, chunk);
+      }
       if (proxyWs.readyState === WebSocket.OPEN) {
         // react-native-tcp-socket gives Buffer; WebSocket.send accepts ArrayBuffer
         if (data instanceof ArrayBuffer) {
@@ -610,6 +890,11 @@ async function handleIncomingConnection(tcpSocket: any, port: number): Promise<v
         }
       }
     });
+
+    for (const chunk of bufferedClientChunks) {
+      maybeLogClientPayload(tunnel, chunk);
+    }
+    sendBufferedClientChunks(proxyWs, bufferedClientChunks);
 
     // Step 4: Pipe WS -> TCP (binary)
     proxyWs.onmessage = (event: MessageEvent) => {
@@ -637,6 +922,7 @@ async function handleIncomingConnection(tcpSocket: any, port: number): Promise<v
         const bytes = new Uint8Array(event.data);
         const current = activeTunnels.get(tunnelId);
         if (!current || current.closing) return;
+        maybeLogServerPayload(current, bytes);
         current.pendingWriteCount += 1;
         try {
           tcpSocket.write(bytes, undefined, () => {
