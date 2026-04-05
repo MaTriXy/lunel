@@ -351,6 +351,14 @@ export function useApi() {
     }, [sendControl]),
 
     /**
+     * Delete a branch
+     */
+    deleteBranch: useCallback(async (branch: string): Promise<void> => {
+      const response = await sendControl('git', 'deleteBranch', { branch });
+      handleResponse<{ branch: string }>(response);
+    }, [sendControl]),
+
+    /**
      * Pull from remote
      */
     pull: useCallback(async (strategy?: 'merge' | 'rebase' | 'ff-only'): Promise<{ success: boolean; summary: string }> => {

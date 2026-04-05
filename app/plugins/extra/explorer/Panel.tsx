@@ -1067,14 +1067,14 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
       </View>
 
       {/* Path Bar */}
-      {!loading && <View style={{
+      <View style={{
         borderTopWidth: StyleSheet.hairlineWidth,
         borderTopColor: colors.border.secondary,
         backgroundColor: colors.bg.base,
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: spacing[2],
-        paddingVertical: 6,
+        height: 45,
         gap: spacing[2],
       }}>
         <TouchableOpacity
@@ -1091,7 +1091,7 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
             opacity: currentPath === '.' || currentPath === '' ? 0.3 : 1,
           }}
         >
-          <ArrowLeft size={14} color={colors.fg.muted} />
+          <ArrowLeft size={15} color={colors.fg.muted} />
         </TouchableOpacity>
         <ScrollView
           horizontal
@@ -1143,11 +1143,11 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
           }}
         >
           {pathCopied
-            ? <Check size={14} color={colors.fg.muted} />
-            : <Copy size={14} color={colors.fg.muted} />
+            ? <Check size={15} color={colors.fg.muted} />
+            : <Copy size={15} color={colors.fg.muted} />
           }
         </TouchableOpacity>
-      </View>}
+      </View>
 
       <FileActionSheet
         visible={selectedItem !== null}

@@ -529,8 +529,8 @@ const styles = StyleSheet.create({
   },
   modalSheet: {
     backgroundColor: "#111111",
-    borderTopLeftRadius: 10,
-    borderTopRightRadius: 10,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     paddingHorizontal: 24,
     paddingTop: 18,
     paddingBottom: 48,

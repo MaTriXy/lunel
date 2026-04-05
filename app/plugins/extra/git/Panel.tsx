@@ -32,6 +32,7 @@ import {
   Minus,
   Undo,
   X,
+  Trash2,
 } from 'lucide-react-native';
 import PluginHeader, { usePluginHeaderHeight } from '@/components/PluginHeader';
 import NotConnected from '@/components/NotConnected';
@@ -179,13 +180,16 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
   const [actionLoading, setActionLoading] = useState(false);
   const [pullLoading, setPullLoading] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
-  const [loadingPaths, setLoadingPaths] = useState<Set<string>>(new Set());
+  const [stagingPaths, setStagingPaths] = useState<Set<string>>(new Set());
+  const [discardingPaths, setDiscardingPaths] = useState<Set<string>>(new Set());
   const [stageAllLoading, setStageAllLoading] = useState(false);
   const [unstageAllLoading, setUnstageAllLoading] = useState(false);
   const [discardAllLoading, setDiscardAllLoading] = useState(false);
 
-  const addLoadingPaths = (paths: string[]) => setLoadingPaths(prev => new Set([...prev, ...paths]));
-  const removeLoadingPaths = (paths: string[]) => setLoadingPaths(prev => { const next = new Set(prev); paths.forEach(p => next.delete(p)); return next; });
+  const addStagingPaths = (paths: string[]) => setStagingPaths(prev => new Set([...prev, ...paths]));
+  const removeStagingPaths = (paths: string[]) => setStagingPaths(prev => { const next = new Set(prev); paths.forEach(p => next.delete(p)); return next; });
+  const addDiscardingPaths = (paths: string[]) => setDiscardingPaths(prev => new Set([...prev, ...paths]));
+  const removeDiscardingPaths = (paths: string[]) => setDiscardingPaths(prev => { const next = new Set(prev); paths.forEach(p => next.delete(p)); return next; });
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const showToast = (message: string, type: 'success' | 'error' = 'success') => setToast({ message, type });
   const [commitLimit, setCommitLimit] = useState(50);
@@ -260,27 +264,27 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
 
   const handleStage = async (paths: string[]) => {
     if (!gitStatus) return;
-    addLoadingPaths(paths);
+    addStagingPaths(paths);
     try {
       await git.stage(paths);
       await loadStatus();
     } catch (err) {
       Alert.alert('Error', (err as ApiError).message || 'Failed to stage');
     } finally {
-      removeLoadingPaths(paths);
+      removeStagingPaths(paths);
     }
   };
 
   const handleUnstage = async (paths: string[]) => {
     if (!gitStatus) return;
-    addLoadingPaths(paths);
+    addStagingPaths(paths);
     try {
       await git.unstage(paths);
       await loadStatus();
     } catch (err) {
       Alert.alert('Error', (err as ApiError).message || 'Failed to unstage');
     } finally {
-      removeLoadingPaths(paths);
+      removeStagingPaths(paths);
     }
   };
 
@@ -437,6 +441,22 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
     }
   };
 
+  const handleDeleteBranch = async (branch: string) => {
+    Alert.alert('Delete Branch', `Delete "${branch}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive', onPress: async () => {
+          try {
+            await git.deleteBranch(branch);
+            await loadBranches();
+          } catch (err) {
+            Alert.alert('Error', (err as ApiError).message || 'Failed to delete branch');
+          }
+        }
+      },
+    ]);
+  };
+
   const handleCreateBranch = async () => {
     if (!newBranchName.trim() || actionLoading) return;
     setActionLoading(true);
@@ -482,7 +502,7 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
           onPress: async () => {
             if (!gitStatus) return;
             if (paths) {
-              addLoadingPaths(paths);
+              addDiscardingPaths(paths);
             } else {
               setDiscardAllLoading(true);
             }
@@ -493,7 +513,7 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
               Alert.alert('Error', (err as ApiError).message || 'Failed to discard');
             } finally {
               if (paths) {
-                removeLoadingPaths(paths);
+                removeDiscardingPaths(paths);
               } else {
                 setDiscardAllLoading(false);
               }
@@ -598,7 +618,7 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
                   marginBottom: -0.5,
                 }}
               >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Text style={{
                     fontSize: typography.body,
                     fontFamily: fonts.sans.regular,
@@ -633,11 +653,13 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
           <Loading color={colors.fg.muted} />
         </View>
       ) : error ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing[6] }}>
-          <GitBranch size={40} color={colors.fg.subtle} strokeWidth={1.5} />
-          <Text style={{ fontSize: typography.body, fontFamily: fonts.sans.medium, color: colors.fg.muted, marginTop: spacing[3], textAlign: 'center' }}>
-            {error}
-          </Text>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20 }}>
+          <View style={{ alignItems: 'center', gap: 8 }}>
+            <GitBranch size={48} color={colors.fg.muted} strokeWidth={1.5} />
+            <Text style={{ color: colors.fg.muted, fontSize: 16, fontFamily: fonts.sans.regular }}>
+              {error}
+            </Text>
+          </View>
         </View>
       ) : activeTab === 'changes' ? (
         <View style={{ flex: 1 }}>
@@ -682,11 +704,11 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
                         </View>
                         <TouchableOpacity
                           onPress={() => handleUnstage([file.path])}
-                          disabled={loadingPaths.has(file.path)}
+                          disabled={stagingPaths.has(file.path)}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                           style={{ width: 26, height: 26, borderRadius: 5, backgroundColor: colors.git.deleted + '18', alignItems: 'center', justifyContent: 'center' }}
                         >
-                          {loadingPaths.has(file.path) ? <SpinnerIcon size={12} color={colors.git.deleted} /> : <Minus size={12} color={colors.git.deleted} strokeWidth={2.5} />}
+                          {stagingPaths.has(file.path) ? <SpinnerIcon size={12} color={colors.git.deleted} /> : <Minus size={12} color={colors.git.deleted} strokeWidth={2.5} />}
                         </TouchableOpacity>
                       </TouchableOpacity>
                     );
@@ -737,19 +759,19 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
                         </View>
                         <TouchableOpacity
                           onPress={() => handleDiscard([file.path])}
-                          disabled={loadingPaths.has(file.path)}
+                          disabled={discardingPaths.has(file.path)}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                           style={{ width: 26, height: 26, borderRadius: 5, backgroundColor: colors.git.deleted + '18', alignItems: 'center', justifyContent: 'center', marginRight: 6 }}
                         >
-                          {loadingPaths.has(file.path) ? <SpinnerIcon size={11} color={colors.git.deleted} /> : <Undo size={11} color={colors.git.deleted} strokeWidth={2} />}
+                          {discardingPaths.has(file.path) ? <SpinnerIcon size={11} color={colors.git.deleted} /> : <Undo size={11} color={colors.git.deleted} strokeWidth={2} />}
                         </TouchableOpacity>
                         <TouchableOpacity
                           onPress={() => handleStage([file.path])}
-                          disabled={loadingPaths.has(file.path)}
+                          disabled={stagingPaths.has(file.path)}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                           style={{ width: 26, height: 26, borderRadius: 5, backgroundColor: colors.git.added + '18', alignItems: 'center', justifyContent: 'center' }}
                         >
-                          {loadingPaths.has(file.path) ? <SpinnerIcon size={12} color={colors.git.added} /> : <Plus size={12} color={colors.git.added} strokeWidth={2.5} />}
+                          {stagingPaths.has(file.path) ? <SpinnerIcon size={12} color={colors.git.added} /> : <Plus size={12} color={colors.git.added} strokeWidth={2.5} />}
                         </TouchableOpacity>
                       </TouchableOpacity>
                     );
@@ -781,11 +803,11 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
                         </Text>
                         <TouchableOpacity
                           onPress={() => handleStage([path])}
-                          disabled={loadingPaths.has(path)}
+                          disabled={stagingPaths.has(path)}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                           style={{ width: 26, height: 26, borderRadius: 5, backgroundColor: colors.git.added + '18', alignItems: 'center', justifyContent: 'center' }}
                         >
-                          {loadingPaths.has(path) ? <SpinnerIcon size={12} color={colors.git.added} /> : <Plus size={12} color={colors.git.added} strokeWidth={2.5} />}
+                          {stagingPaths.has(path) ? <SpinnerIcon size={12} color={colors.git.added} /> : <Plus size={12} color={colors.git.added} strokeWidth={2.5} />}
                         </TouchableOpacity>
                       </TouchableOpacity>
                     );
@@ -796,11 +818,13 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
 
             {/* Clean state */}
             {gitStatus && totalChanges === 0 && (
-              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                <CheckCircle2 size={40} color={colors.git.added} strokeWidth={1.5} />
-                <Text style={{ fontSize: typography.body, fontFamily: fonts.sans.medium, color: colors.fg.muted, marginTop: spacing[3] }}>
-                  Working tree clean
-                </Text>
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20 }}>
+                <View style={{ alignItems: 'center', gap: 8 }}>
+                  <CheckCircle2 size={48} color={colors.fg.muted} strokeWidth={1.5} />
+                  <Text style={{ color: colors.fg.muted, fontSize: 16, fontFamily: fonts.sans.regular }}>
+                    Working tree clean
+                  </Text>
+                </View>
               </View>
             )}
           </ScrollView>
@@ -816,11 +840,13 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
           contentContainerStyle={{ flexGrow: 1, paddingBottom: spacing[6] }}
         >
           {commits.length === 0 ? (
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing[6] }}>
-              <GitCommitIcon size={40} color={colors.fg.subtle} strokeWidth={1.5} />
-              <Text style={{ fontSize: typography.body, fontFamily: fonts.sans.medium, color: colors.fg.muted, marginTop: spacing[3] }}>
-                No commits yet
-              </Text>
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20 }}>
+              <View style={{ alignItems: 'center', gap: 8 }}>
+                <GitCommitIcon size={48} color={colors.fg.muted} strokeWidth={1.5} />
+                <Text style={{ color: colors.fg.muted, fontSize: 16, fontFamily: fonts.sans.regular }}>
+                  No commits yet
+                </Text>
+              </View>
             </View>
           ) : (
             <>
@@ -964,11 +990,13 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
         </ScrollView>
       ) : activeTab === 'branches' && branches ? (
         branches.branches.length === 0 ? (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing[6] }}>
-            <GitBranch size={40} color={colors.fg.subtle} strokeWidth={1.5} />
-            <Text style={{ fontSize: typography.body, fontFamily: fonts.sans.medium, color: colors.fg.muted, marginTop: spacing[3], textAlign: 'center' }}>
-              No branches found
-            </Text>
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20 }}>
+            <View style={{ alignItems: 'center', gap: 8 }}>
+              <GitBranch size={48} color={colors.fg.muted} strokeWidth={1.5} />
+              <Text style={{ color: colors.fg.muted, fontSize: 16, fontFamily: fonts.sans.regular }}>
+                No branches found
+              </Text>
+            </View>
           </View>
         ) : (
         <ScrollView
@@ -1014,7 +1042,15 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
                     <Text style={{ fontSize: typography.caption, fontFamily: fonts.sans.medium, color: colors.git.added }}>Current</Text>
                   </View>
                 )}
-                {!isCurrent && <ChevronRight size={16} color={colors.fg.subtle} strokeWidth={2} />}
+                {!isCurrent && (
+                  <TouchableOpacity
+                    onPress={() => handleDeleteBranch(branch)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    activeOpacity={0.6}
+                  >
+                    <Trash2 size={15} color={colors.git.deleted} strokeWidth={2} />
+                  </TouchableOpacity>
+                )}
               </TouchableOpacity>
             );
           })}

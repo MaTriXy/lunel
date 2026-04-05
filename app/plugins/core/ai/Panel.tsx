@@ -1131,6 +1131,9 @@ function BackendPickerDialog({
     { backend: "codex", label: "Codex", description: "OpenAI Codex CLI" },
     { label: "Claude Code", description: "Coming soon", disabled: true },
   ];
+  const text = {
+    header: "New Session",
+  };
 
   return (
     <Modal transparent animationType="none" visible onRequestClose={onClose}>
@@ -1154,7 +1157,7 @@ function BackendPickerDialog({
             <View style={styles.sheetHeader}>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: colors.fg.default, fontSize: 20, fontFamily: fonts.sans.semibold }}>
-                  New Session
+                  {text.header}
                 </Text>
               </View>
               <TouchableOpacity
@@ -1166,7 +1169,7 @@ function BackendPickerDialog({
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 20, gap: 10 }} keyboardDismissMode="on-drag">
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 18, gap: 6 }} keyboardDismissMode="on-drag">
               {options.map(({ backend, label, description, disabled }) => (
                 <TouchableOpacity
                   key={backend ?? label}
@@ -1181,10 +1184,10 @@ function BackendPickerDialog({
                     opacity: disabled ? 0.55 : 1,
                   }]}
                 >
-                  <Text style={{ color: colors.fg.default, fontSize: 15, fontFamily: fonts.sans.semibold }}>
+                  <Text style={{ color: colors.fg.default, fontSize: 14, fontFamily: fonts.sans.medium }}>
                     {label}
                   </Text>
-                  <Text style={{ color: colors.fg.muted, fontSize: 12, fontFamily: fonts.sans.regular, marginTop: 2 }}>
+                  <Text style={{ color: colors.fg.muted, fontSize: 12, fontFamily: fonts.sans.regular, marginTop: 1 }}>
                     {description}
                   </Text>
                 </TouchableOpacity>

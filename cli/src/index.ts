@@ -1110,6 +1110,18 @@ async function handleGitCheckout(payload: Record<string, unknown>): Promise<Reco
   return { branch };
 }
 
+async function handleGitDeleteBranch(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const branch = payload.branch as string;
+  if (!branch) throw Object.assign(new Error("branch is required"), { code: "EINVAL" });
+
+  const result = await runGit(["branch", "-d", branch]);
+  if (result.code !== 0) {
+    throw Object.assign(new Error(result.stderr || "git branch delete failed"), { code: "EGIT" });
+  }
+
+  return { branch };
+}
+
 async function handleGitPull(): Promise<Record<string, unknown>> {
   const result = await runGit(["pull"]);
   if (result.code !== 0) {
@@ -2891,6 +2903,9 @@ async function processMessage(message: Message): Promise<Response> {
             break;
           case "checkout":
             result = await handleGitCheckout(payload);
+            break;
+          case "deleteBranch":
+            result = await handleGitDeleteBranch(payload);
             break;
           case "pull":
             result = await handleGitPull();

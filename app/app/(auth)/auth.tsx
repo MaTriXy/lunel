@@ -193,7 +193,7 @@ function PastSessionsSheet({
   const [modalVisible, setModalVisible] = useState(false);
   const backdropOpacity = useSharedValue(0);
   const sheetTranslateY = useSharedValue(SCREEN_HEIGHT);
-  const pastSheetRadius = 10;
+  const pastSheetRadius = 20;
   const hideModal = useCallback(() => setModalVisible(false), []);
 
   useEffect(() => {
@@ -506,13 +506,21 @@ export default function Auth() {
                 style={[
                   styles.appIcon,
                   {
-                    width: isTablet ? 280 : 236,
-                    height: isTablet ? 280 : 236,
-                    borderRadius: radius.md,
+                    width: isTablet ? 280 : 180,
+                    height: isTablet ? 280 : 180,
+                    borderRadius: 15,
                   },
                 ]}
                 resizeMode="contain"
               />
+              <View style={styles.brandText}>
+                <Text style={[styles.appName, { color: colors.fg.default, fontFamily: fonts.sans.semibold }]}>
+                  Lunel
+                </Text>
+                <Text style={[styles.tagline, { color: colors.fg.muted, fontFamily: fonts.sans.regular }]}>
+                  ship from anywhere
+                </Text>
+              </View>
             </View>
           </View>
         </View>
@@ -629,12 +637,12 @@ const styles = StyleSheet.create({
   },
   actionsSection: {
     width: "100%",
-    paddingBottom: 28,
+    paddingBottom: 52,
   },
   buttons: {
     gap: 12,
     alignSelf: "stretch",
-    paddingHorizontal: 32,
+    paddingHorizontal: 16,
   },
   appIcon: {
     width: 100,

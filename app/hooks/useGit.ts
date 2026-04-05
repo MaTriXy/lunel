@@ -89,6 +89,13 @@ export function useGit() {
     }
   }, [sendControl]);
 
+  const deleteBranch = useCallback(async (branch: string): Promise<void> => {
+    const response = await sendControl('git', 'deleteBranch', { branch });
+    if (!response.ok) {
+      throw new Error(response.error?.message || 'Failed to delete branch');
+    }
+  }, [sendControl]);
+
   return {
     isConnected,
     getStatus,
@@ -99,5 +106,6 @@ export function useGit() {
     diff,
     getBranches,
     checkout,
+    deleteBranch,
   };
 }
