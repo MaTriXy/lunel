@@ -228,7 +228,7 @@ function SearchPanel({ isActive }: PluginPanelProps) {
             <TouchableOpacity
               onPress={() => setShowOptions((prev) => !prev)}
               activeOpacity={0.7}
-              style={[styles.iconButton, { backgroundColor: colors.bg.base }]}
+              style={styles.iconButton}
             >
               <ChevronDown
                 size={16}
@@ -254,10 +254,10 @@ function SearchPanel({ isActive }: PluginPanelProps) {
                   <Text style={{ color: colors.fg.muted, fontFamily: fonts.sans.medium, fontSize: 12 }}>
                     Path
                   </Text>
-                  <View style={[styles.secondaryValueRow, { borderColor: colors.border.secondary }]}>
-                    <TextInput
-                      style={[styles.pathInput, { color: colors.fg.default, fontFamily: fonts.mono.regular }]}
-                      placeholder="."
+                <View style={[styles.secondaryValueRow, { borderColor: colors.border.secondary }]}>
+                  <TextInput
+                    style={[styles.pathInput, { color: colors.fg.default, fontFamily: fonts.mono.regular }]}
+                    placeholder="."
                       placeholderTextColor={colors.fg.subtle}
                       value={searchPath}
                       onChangeText={setSearchPath}
@@ -282,9 +282,9 @@ function SearchPanel({ isActive }: PluginPanelProps) {
                     <Switch
                       value={caseSensitive}
                       onValueChange={setCaseSensitive}
-                      trackColor={{ false: colors.bg.raised, true: colors.bg.raised }}
-                      thumbColor={caseSensitive ? colors.accent.default : colors.fg.subtle}
-                      ios_backgroundColor={colors.bg.raised}
+                      trackColor={{ false: colors.fg.subtle, true: colors.accent.default + '88' }}
+                      thumbColor={caseSensitive ? '#ffffff' : colors.fg.default}
+                      ios_backgroundColor={colors.fg.subtle}
                     />
                   </View>
                 </View>
@@ -463,7 +463,6 @@ const styles = StyleSheet.create({
   },
   optionsCard: {
     marginTop: 4,
-    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 12,
     padding: 0,
   },
@@ -480,6 +479,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 32,
     borderRadius: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     paddingLeft: 12,
     paddingRight: 8,
     flexDirection: 'row',
