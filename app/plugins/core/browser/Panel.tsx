@@ -2642,7 +2642,7 @@ export default function BrowserPanel({ bottomBarHeight }: PluginPanelProps) {
                 />
               </View>
             ) : activeDevsoleSection === "elements" ? (
-              <View style={{ flex: 1, padding: 10 }}>
+              <View style={{ flex: 1 }}>
                 <ElementsSection
                   snapshot={activeElementsSnapshot}
                   listKey={activeTabId}
@@ -2664,7 +2664,7 @@ export default function BrowserPanel({ bottomBarHeight }: PluginPanelProps) {
                 />
               </View>
             ) : activeDevsoleSection === "resources" ? (
-              <View style={{ flex: 1, padding: 10 }}>
+              <View style={{ flex: 1 }}>
                 <ResourcesSection
                   snapshot={activeResourcesSnapshot}
                   listKey={activeTabId}
@@ -2691,7 +2691,6 @@ export default function BrowserPanel({ bottomBarHeight }: PluginPanelProps) {
                 <InfoSection
                   snapshot={activeInfoSnapshot}
                   listKey={activeTabId}
-                  onRefresh={() => requestInfoSnapshot(activeTabId)}
                 />
               </View>
             ) : activeDevsoleSection === "proxies" ? (

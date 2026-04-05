@@ -53,38 +53,27 @@ const NetworkRow = memo(function NetworkRow({
       onPress={onPress}
       activeOpacity={0.85}
       style={{
-        paddingVertical: 8,
-        paddingHorizontal: 8,
-        gap: 5,
-        borderRadius: radius.md,
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        gap: 4,
         backgroundColor: expanded ? colors.bg.raised : "transparent",
       }}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-        <View style={{
-          paddingHorizontal: 5,
-          paddingVertical: 2,
-          borderRadius: 4,
-          backgroundColor: colors.accent.default + "18",
-        }}>
-          <Text style={{ color: colors.accent.default, fontSize: 9, fontFamily: fonts.sans.semibold }}>
-            {item.method}
-          </Text>
-        </View>
-        <View style={{
-          paddingHorizontal: 5,
-          paddingVertical: 2,
-          borderRadius: 4,
-          backgroundColor: statusColor + "18",
-        }}>
-          <Text style={{ color: statusColor, fontSize: 9, fontFamily: fonts.sans.semibold }}>
-            {item.status == null ? "···" : String(item.status)}
-          </Text>
-        </View>
-        <Text style={{ color: colors.fg.subtle, fontSize: 9, fontFamily: fonts.sans.medium }}>
-          {item.type || "unknown"}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        <Text style={{ color: colors.accent.default, fontSize: 10, fontFamily: fonts.sans.semibold, minWidth: 28 }}>
+          {item.method}
         </Text>
-        <Text style={{ color: colors.fg.subtle, fontSize: 9, fontFamily: fonts.sans.regular, marginLeft: "auto" }}>
+        <Text style={{
+          fontSize: 10,
+          fontFamily: fonts.sans.semibold,
+          color: statusColor,
+        }}>
+          {item.status == null ? "···" : String(item.status)}
+        </Text>
+        <Text style={{ color: colors.fg.muted, fontSize: 10, fontFamily: fonts.sans.regular }}>
+          {item.type || "xhr"}
+        </Text>
+        <Text style={{ color: colors.fg.muted, fontSize: 10, fontFamily: fonts.sans.regular, marginLeft: "auto" }}>
           {formatDuration(item.durationMs)}
         </Text>
       </View>
@@ -94,85 +83,52 @@ const NetworkRow = memo(function NetworkRow({
         style={{
           color: colors.fg.default,
           fontSize: 11,
-          lineHeight: 15,
-          fontFamily: fonts.sans.medium,
+          lineHeight: 16,
+          fontFamily: fonts.mono.regular,
         }}
       >
         {compactUrl(item.url)}
       </Text>
 
       {item.error && !expanded ? (
-        <Text
-          numberOfLines={1}
-          style={{
-            color: '#ef4444',
-            fontSize: 10,
-            fontFamily: fonts.sans.regular,
-          }}
-        >
+        <Text numberOfLines={1} style={{ color: '#ef4444', fontSize: 10, fontFamily: fonts.sans.regular }}>
           {item.error}
         </Text>
       ) : null}
 
       {expanded ? (
-        <View style={{ gap: 6, paddingTop: 2 }}>
-          <Text
-            style={{
-              color: colors.fg.muted,
-              fontSize: 10,
-              lineHeight: 14,
-              fontFamily: fonts.sans.regular,
-            }}
-          >
+        <View style={{ gap: 6, paddingTop: 4 }}>
+          <Text style={{ color: colors.fg.muted, fontSize: 10, lineHeight: 15, fontFamily: fonts.mono.regular }}>
             {item.url}
           </Text>
 
           {item.requestBody ? (
-            <View
-              style={{
-                paddingHorizontal: 10,
-                paddingVertical: 8,
-                borderRadius: radius.md,
-                backgroundColor: colors.bg.base,
-                gap: 4,
-              }}
-            >
-              <Text style={{ color: colors.fg.subtle, fontSize: 9, fontFamily: fonts.sans.semibold, textTransform: "uppercase", letterSpacing: 0.4 }}>
-                Request
-              </Text>
-              <Text style={{ color: colors.fg.default, fontSize: 10, lineHeight: 15, fontFamily: fonts.sans.regular }}>
+            <View style={{ borderRadius: radius.md, backgroundColor: colors.bg.base, overflow: "hidden" }}>
+              <View style={{ paddingHorizontal: 10, paddingVertical: 6, borderBottomWidth: 0.5, borderBottomColor: colors.border.secondary }}>
+                <Text style={{ color: colors.fg.subtle, fontSize: 9, fontFamily: fonts.sans.semibold, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                  Request
+                </Text>
+              </View>
+              <Text style={{ color: colors.fg.default, fontSize: 10, lineHeight: 15, fontFamily: fonts.mono.regular, padding: 10 }}>
                 {item.requestBody}
               </Text>
             </View>
           ) : null}
 
           {item.responsePreview ? (
-            <View
-              style={{
-                paddingHorizontal: 10,
-                paddingVertical: 8,
-                borderRadius: radius.md,
-                backgroundColor: colors.bg.base,
-                gap: 4,
-              }}
-            >
-              <Text style={{ color: colors.fg.subtle, fontSize: 9, fontFamily: fonts.sans.semibold, textTransform: "uppercase", letterSpacing: 0.4 }}>
-                Response
-              </Text>
-              <Text
-                numberOfLines={6}
-                style={{ color: colors.fg.muted, fontSize: 10, lineHeight: 15, fontFamily: fonts.sans.regular }}
-              >
+            <View style={{ borderRadius: radius.md, backgroundColor: colors.bg.base, overflow: "hidden" }}>
+              <View style={{ paddingHorizontal: 10, paddingVertical: 6, borderBottomWidth: 0.5, borderBottomColor: colors.border.secondary }}>
+                <Text style={{ color: colors.fg.subtle, fontSize: 9, fontFamily: fonts.sans.semibold, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                  Response
+                </Text>
+              </View>
+              <Text numberOfLines={6} style={{ color: colors.fg.default, fontSize: 10, lineHeight: 15, fontFamily: fonts.mono.regular, padding: 10 }}>
                 {item.responsePreview}
               </Text>
               {hasLongResponse ? (
-                <TouchableOpacity
-                  onPress={onReadAllResponse}
-                  activeOpacity={0.85}
-                  style={{ marginTop: 2, alignSelf: "flex-start" }}
-                >
+                <TouchableOpacity onPress={onReadAllResponse} activeOpacity={0.85} style={{ paddingHorizontal: 10, paddingBottom: 10 }}>
                   <Text style={{ color: colors.accent.default, fontSize: 10, fontFamily: fonts.sans.medium }}>
-                    Read full response
+                    Read full response →
                   </Text>
                 </TouchableOpacity>
               ) : null}
@@ -180,17 +136,13 @@ const NetworkRow = memo(function NetworkRow({
           ) : null}
 
           {item.error ? (
-            <View style={{
-              paddingHorizontal: 10,
-              paddingVertical: 8,
-              borderRadius: radius.md,
-              backgroundColor: '#ef444412',
-              gap: 4,
-            }}>
-              <Text style={{ color: '#ef4444', fontSize: 9, fontFamily: fonts.sans.semibold, textTransform: "uppercase", letterSpacing: 0.4 }}>
-                Error
-              </Text>
-              <Text style={{ color: '#ef4444', fontSize: 10, lineHeight: 15, fontFamily: fonts.sans.regular }}>
+            <View style={{ borderRadius: radius.md, backgroundColor: '#ef444412', overflow: "hidden" }}>
+              <View style={{ paddingHorizontal: 10, paddingVertical: 6, borderBottomWidth: 0.5, borderBottomColor: '#ef444430' }}>
+                <Text style={{ color: '#ef4444', fontSize: 9, fontFamily: fonts.sans.semibold, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                  Error
+                </Text>
+              </View>
+              <Text style={{ color: '#ef4444', fontSize: 10, lineHeight: 15, fontFamily: fonts.mono.regular, padding: 10 }}>
                 {item.error}
               </Text>
             </View>
@@ -511,7 +463,7 @@ export default function NetworkSection({
         </View>
       ) : null}
 
-      <View style={{ flex: 1, paddingHorizontal: 10 }}>
+      <View style={{ flex: 1 }}>
         {filteredEntries.length === 0 ? (
           <View
             style={{
@@ -556,13 +508,7 @@ export default function NetworkSection({
             estimatedItemSize={78}
             contentContainerStyle={{ paddingBottom: 8 }}
             ItemSeparatorComponent={() => (
-              <View
-                style={{
-                  height: 1,
-                  backgroundColor: colors.bg.raised,
-                  marginVertical: 2,
-                }}
-              />
+              <View style={{ height: 0.5, backgroundColor: colors.border.secondary, marginHorizontal: 14 }} />
             )}
           />
         )}

@@ -8,6 +8,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
@@ -338,32 +339,23 @@ export default function ResourcesSection({
   }, [searchQuery, snapshot]);
 
   return (
-    <View style={{ flex: 1, gap: 10 }}>
+    <View style={{ flex: 1 }}>
       <View
         style={{
           flexDirection: "row",
           alignItems: "center",
-          gap: 8,
+          paddingHorizontal: 8,
+          backgroundColor: colors.bg.raised,
+          borderBottomWidth: 0.5,
+          borderBottomColor: colors.border.secondary,
         }}
       >
-        <TouchableOpacity
-          onPress={() => setSearchOpen((current) => !current)}
-          activeOpacity={0.85}
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: radius.full,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: searchOpen ? colors.accent.default : colors.bg.base,
-            borderWidth: searchOpen ? 0 : 1,
-            borderColor: colors.bg.raised,
-          }}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ flexDirection: "row" }}
         >
-          <Search size={13} color={searchOpen ? '#ffffff' : colors.fg.default} strokeWidth={2} />
-        </TouchableOpacity>
-
-        <View style={{ flexDirection: "row", gap: 6 }}>
           {(["localStorage", "sessionStorage", "cookies"] as ResourceMode[]).map((nextMode) => {
             const active = nextMode === mode;
             return (
@@ -372,20 +364,19 @@ export default function ResourcesSection({
                 onPress={() => setMode(nextMode)}
                 activeOpacity={0.85}
                 style={{
-                  paddingHorizontal: 9,
-                  height: 28,
-                  borderRadius: radius.full,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: active ? colors.accent.default : colors.bg.base,
-                  borderWidth: active ? 0 : 1,
-                  borderColor: colors.bg.raised,
+                  paddingHorizontal: 8,
+                  paddingTop: 10,
+                  paddingBottom: 10,
+                  marginRight: 4,
+                  borderBottomWidth: 2,
+                  borderBottomColor: active ? colors.fg.muted : "transparent",
+                  marginBottom: -0.5,
                 }}
               >
                 <Text
                   style={{
-                    color: active ? '#ffffff' : colors.fg.default,
-                    fontSize: 10,
+                    color: active ? colors.fg.default : colors.fg.muted,
+                    fontSize: 11,
                     fontFamily: active ? fonts.sans.semibold : fonts.sans.medium,
                   }}
                 >
@@ -398,76 +389,117 @@ export default function ResourcesSection({
               </TouchableOpacity>
             );
           })}
+        </ScrollView>
+
+        <View style={{ flexDirection: "row", gap: 4, marginLeft: 6 }}>
+          <TouchableOpacity
+            onPress={() => setSearchOpen((current) => !current)}
+            activeOpacity={0.85}
+            style={{
+              width: 28,
+              height: 28,
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: radius.full,
+              backgroundColor: searchOpen ? colors.accent.default : colors.bg.base,
+              borderWidth: 0.5,
+              borderColor: searchOpen ? colors.accent.default : colors.border.secondary,
+            }}
+          >
+            <Search size={14} color={searchOpen ? "#ffffff" : colors.fg.default} strokeWidth={2} />
+          </TouchableOpacity>
+
+          {mode !== "cookies" ? (
+            <TouchableOpacity
+              onPress={() => onClearStorageArea(mode)}
+              activeOpacity={0.85}
+              style={{
+                width: 28,
+                height: 28,
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: radius.full,
+                backgroundColor: colors.bg.base,
+                borderWidth: 0.5,
+                borderColor: colors.border.secondary,
+              }}
+            >
+              <Trash2 size={14} color={colors.fg.default} strokeWidth={2} />
+            </TouchableOpacity>
+          ) : null}
+
+          <TouchableOpacity
+            onPress={() => {
+              if (mode === "cookies") {
+                setEditor({ type: "cookie", name: "", value: "" });
+                return;
+              }
+              setEditor({ type: "storage", area: mode, key: "", value: "" });
+            }}
+            activeOpacity={0.85}
+            style={{
+              width: 28,
+              height: 28,
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: radius.full,
+              backgroundColor: colors.bg.base,
+              borderWidth: 0.5,
+              borderColor: colors.border.secondary,
+            }}
+          >
+            <Plus size={14} color={colors.fg.default} strokeWidth={2} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={onRefresh}
+            activeOpacity={0.85}
+            style={{
+              width: 28,
+              height: 28,
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: radius.full,
+              backgroundColor: colors.bg.base,
+              borderWidth: 0.5,
+              borderColor: colors.border.secondary,
+            }}
+          >
+            <RefreshCw size={14} color={colors.fg.default} strokeWidth={2} />
+          </TouchableOpacity>
         </View>
-
-        <View style={{ flex: 1 }} />
-
-        <TouchableOpacity
-          onPress={() => {
-            if (mode === "cookies") {
-              setEditor({ type: "cookie", name: "", value: "" });
-              return;
-            }
-            setEditor({
-              type: "storage",
-              area: mode,
-              key: "",
-              value: "",
-            });
-          }}
-          activeOpacity={0.85}
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: radius.full,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: colors.bg.base,
-            borderWidth: 1,
-            borderColor: colors.bg.raised,
-          }}
-        >
-          <Plus size={13} color={colors.fg.default} strokeWidth={2} />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={onRefresh}
-          activeOpacity={0.85}
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: radius.full,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: colors.bg.base,
-            borderWidth: 1,
-            borderColor: colors.bg.raised,
-          }}
-        >
-          <RefreshCw size={13} color={colors.fg.default} strokeWidth={2} />
-        </TouchableOpacity>
       </View>
 
       {searchOpen ? (
-        <TextInput
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder={mode === "cookies" ? "Search cookies" : "Search storage"}
-          placeholderTextColor={colors.fg.subtle}
-          style={{
-            height: 34,
-            borderRadius: radius.lg,
-            backgroundColor: colors.bg.raised,
-            borderWidth: 1,
-            borderColor: colors.bg.raised,
-            color: colors.fg.default,
-            paddingHorizontal: 12,
-            fontSize: 11,
-            fontFamily: fonts.sans.regular,
-          }}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
+        <View style={{ paddingHorizontal: 10, marginTop: 10 }}>
+          <View
+            style={{
+              minHeight: 32,
+              paddingHorizontal: 10,
+              backgroundColor: colors.bg.raised,
+              borderRadius: 8,
+              borderWidth: 0.5,
+              borderColor: colors.border.secondary,
+              justifyContent: "center",
+            }}
+          >
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder={mode === "cookies" ? "Search cookies" : "Search storage"}
+              placeholderTextColor={colors.fg.subtle}
+              style={{
+                color: colors.fg.default,
+                fontSize: 11,
+                fontFamily: fonts.mono.regular,
+                paddingVertical: 0,
+              }}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoFocus
+            />
+          </View>
+        </View>
       ) : null}
 
       <View style={{ flex: 1 }}>
@@ -475,37 +507,35 @@ export default function ResourcesSection({
           <FlashList
             key={`${listKey}-cookies`}
             data={filteredCookies}
-            estimatedItemSize={52}
+            estimatedItemSize={62}
             keyExtractor={(item) => item.id}
+            contentContainerStyle={{ paddingBottom: 16 }}
             renderItem={({ item }) => (
-              <View
+              <TouchableOpacity
+                onPress={() => {
+                  setEditor({
+                    type: "cookie",
+                    originalName: item.name,
+                    name: item.name,
+                    value: item.value,
+                  });
+                }}
+                activeOpacity={0.85}
                 style={{
-                  minHeight: 44,
-                  paddingHorizontal: 6,
-                  paddingVertical: 6,
                   flexDirection: "row",
                   alignItems: "center",
-                  gap: 8,
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  gap: 10,
                 }}
               >
-                <TouchableOpacity
-                  onPress={() => {
-                    setEditor({
-                      type: "cookie",
-                      originalName: item.name,
-                      name: item.name,
-                      value: item.value,
-                    });
-                  }}
-                  activeOpacity={0.85}
-                  style={{ flex: 1, gap: 2 }}
-                >
+                <View style={{ flex: 1, gap: 3 }}>
                   <Text
                     numberOfLines={1}
                     style={{
                       color: colors.accent.default,
-                      fontSize: 10,
-                      fontFamily: fonts.mono.regular,
+                      fontSize: 11,
+                      fontFamily: fonts.mono.medium,
                     }}
                   >
                     {item.name}
@@ -513,52 +543,40 @@ export default function ResourcesSection({
                   <Text
                     numberOfLines={1}
                     style={{
-                      color: colors.fg.default,
+                      color: item.value ? colors.fg.default : colors.fg.muted,
                       fontSize: 10,
+                      lineHeight: 15,
                       fontFamily: fonts.mono.regular,
                     }}
                   >
-                    {item.value || "—"}
+                    {item.value || "empty"}
                   </Text>
-                </TouchableOpacity>
+                </View>
 
-                <TouchableOpacity
-                  onPress={() => Clipboard.setStringAsync(`${item.name}=${item.value}`)}
-                  activeOpacity={0.85}
-                  style={{
-                    width: 26,
-                    height: 26,
-                    borderRadius: radius.full,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: colors.bg.raised,
-                  }}
-                >
-                  <Copy size={12} color={colors.fg.default} strokeWidth={2} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() => onRemoveCookie(item.name)}
-                  activeOpacity={0.85}
-                  style={{
-                    width: 26,
-                    height: 26,
-                    borderRadius: radius.full,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: colors.bg.raised,
-                  }}
-                >
-                  <Trash2 size={12} color={colors.fg.default} strokeWidth={2} />
-                </TouchableOpacity>
-              </View>
+                <View style={{ flexDirection: "row", gap: 2 }}>
+                  <TouchableOpacity
+                    onPress={() => Clipboard.setStringAsync(`${item.name}=${item.value}`)}
+                    activeOpacity={0.7}
+                    style={{ padding: 6 }}
+                  >
+                    <Copy size={13} color={colors.fg.subtle} strokeWidth={2} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => onRemoveCookie(item.name)}
+                    activeOpacity={0.7}
+                    style={{ padding: 6 }}
+                  >
+                    <Trash2 size={13} color={colors.fg.subtle} strokeWidth={2} />
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
             )}
             ItemSeparatorComponent={() => (
-              <View style={{ height: 1, backgroundColor: colors.bg.raised }} />
+              <View style={{ height: 0.5, backgroundColor: colors.border.secondary, marginHorizontal: 14 }} />
             )}
             ListEmptyComponent={
-              <View style={{ paddingTop: 20, alignItems: "center", gap: 8 }}>
-                <Text style={{ color: colors.fg.default, fontSize: 13, fontFamily: fonts.sans.semibold }}>
+              <View style={{ paddingTop: 32, alignItems: "center" }}>
+                <Text style={{ color: colors.fg.muted, fontSize: 12, fontFamily: fonts.sans.regular }}>
                   No cookies
                 </Text>
               </View>
@@ -568,38 +586,36 @@ export default function ResourcesSection({
           <FlashList
             key={`${listKey}-${mode}`}
             data={filteredStorageItems}
-            estimatedItemSize={56}
+            estimatedItemSize={66}
             keyExtractor={(item) => item.id}
+            contentContainerStyle={{ paddingBottom: 16 }}
             renderItem={({ item }) => (
-              <View
+              <TouchableOpacity
+                onPress={() => {
+                  setEditor({
+                    type: "storage",
+                    area: item.area,
+                    originalKey: item.key,
+                    key: item.key,
+                    value: item.value,
+                  });
+                }}
+                activeOpacity={0.85}
                 style={{
-                  minHeight: 46,
-                  paddingHorizontal: 6,
-                  paddingVertical: 6,
                   flexDirection: "row",
                   alignItems: "center",
-                  gap: 8,
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  gap: 10,
                 }}
               >
-                <TouchableOpacity
-                  onPress={() => {
-                    setEditor({
-                      type: "storage",
-                      area: item.area,
-                      originalKey: item.key,
-                      key: item.key,
-                      value: item.value,
-                    });
-                  }}
-                  activeOpacity={0.85}
-                  style={{ flex: 1, gap: 2 }}
-                >
+                <View style={{ flex: 1, gap: 3 }}>
                   <Text
                     numberOfLines={1}
                     style={{
                       color: colors.accent.default,
-                      fontSize: 10,
-                      fontFamily: fonts.mono.regular,
+                      fontSize: 11,
+                      fontFamily: fonts.mono.medium,
                     }}
                   >
                     {item.key}
@@ -607,83 +623,40 @@ export default function ResourcesSection({
                   <Text
                     numberOfLines={2}
                     style={{
-                      color: colors.fg.default,
+                      color: item.value ? colors.fg.default : colors.fg.muted,
                       fontSize: 10,
-                      lineHeight: 14,
+                      lineHeight: 15,
                       fontFamily: fonts.mono.regular,
                     }}
                   >
-                    {item.value || "—"}
+                    {item.value || "empty"}
                   </Text>
-                </TouchableOpacity>
+                </View>
 
-                <TouchableOpacity
-                  onPress={() => Clipboard.setStringAsync(item.value)}
-                  activeOpacity={0.85}
-                  style={{
-                    width: 26,
-                    height: 26,
-                    borderRadius: radius.full,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: colors.bg.raised,
-                  }}
-                >
-                  <Copy size={12} color={colors.fg.default} strokeWidth={2} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() => onRemoveStorageItem(item.area, item.key)}
-                  activeOpacity={0.85}
-                  style={{
-                    width: 26,
-                    height: 26,
-                    borderRadius: radius.full,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: colors.bg.raised,
-                  }}
-                >
-                  <Trash2 size={12} color={colors.fg.default} strokeWidth={2} />
-                </TouchableOpacity>
-              </View>
-            )}
-            ListHeaderComponent={
-              <TouchableOpacity
-                onPress={() => onClearStorageArea(mode as "localStorage" | "sessionStorage")}
-                activeOpacity={0.85}
-                style={{
-                  alignSelf: "flex-start",
-                  marginBottom: 6,
-                  height: 26,
-                  paddingHorizontal: 10,
-                  borderRadius: radius.full,
-                  backgroundColor: colors.bg.raised,
-                  borderWidth: 1,
-                  borderColor: colors.bg.raised,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 5,
-                }}
-              >
-                <Trash2 size={11} color={colors.fg.default} strokeWidth={2} />
-                <Text
-                  style={{
-                    color: colors.fg.default,
-                    fontSize: 10,
-                    fontFamily: fonts.sans.medium,
-                  }}
-                >
-                  Clear
-                </Text>
+                <View style={{ flexDirection: "row", gap: 2 }}>
+                  <TouchableOpacity
+                    onPress={() => Clipboard.setStringAsync(item.value)}
+                    activeOpacity={0.7}
+                    style={{ padding: 6 }}
+                  >
+                    <Copy size={13} color={colors.fg.subtle} strokeWidth={2} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => onRemoveStorageItem(item.area, item.key)}
+                    activeOpacity={0.7}
+                    style={{ padding: 6 }}
+                  >
+                    <Trash2 size={13} color={colors.fg.subtle} strokeWidth={2} />
+                  </TouchableOpacity>
+                </View>
               </TouchableOpacity>
-            }
+            )}
             ItemSeparatorComponent={() => (
-              <View style={{ height: 1, backgroundColor: colors.bg.raised }} />
+              <View style={{ height: 0.5, backgroundColor: colors.border.secondary, marginHorizontal: 14 }} />
             )}
             ListEmptyComponent={
-              <View style={{ paddingTop: 20, alignItems: "center", gap: 8 }}>
-                <Text style={{ color: colors.fg.default, fontSize: 13, fontFamily: fonts.sans.semibold }}>
+              <View style={{ paddingTop: 32, alignItems: "center" }}>
+                <Text style={{ color: colors.fg.muted, fontSize: 12, fontFamily: fonts.sans.regular }}>
                   No entries
                 </Text>
               </View>

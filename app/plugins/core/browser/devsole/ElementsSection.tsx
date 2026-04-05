@@ -120,13 +120,14 @@ function TreeRow({
       activeOpacity={0.85}
       style={{
         position: "relative",
-        minHeight: 34,
+        minHeight: 36,
         paddingLeft: indent,
-        paddingRight: 8,
-        paddingVertical: 5,
-        borderRadius: radius.md,
+        paddingRight: 14,
+        paddingVertical: 6,
         backgroundColor: selected ? colors.bg.raised : "transparent",
-        gap: 2,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 6,
       }}
     >
       {guideLevels.map((_, index) => (
@@ -138,41 +139,32 @@ function TreeRow({
             top: 0,
             bottom: 0,
             left: 15 + index * 14,
-            width: 1,
-            backgroundColor: colors.bg.raised,
-            opacity: 0.9,
+            width: 0.5,
+            backgroundColor: colors.border.secondary,
           }}
         />
       ))}
 
-      <View style={{ flexDirection: "row", alignItems: "stretch", gap: 6, minHeight: 34 }}>
-        <View style={{ flex: 1, gap: 2, minHeight: 34, justifyContent: "center" }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-        {item.hasChildren ? (
-          <TouchableOpacity
-            onPress={onToggleExpand}
-            activeOpacity={0.85}
-            style={{
-              width: 16,
-              height: 16,
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            {expanded ? (
-              <ChevronDown size={12} color={colors.fg.subtle} strokeWidth={2} />
-            ) : (
-              <ChevronRight size={12} color={colors.fg.subtle} strokeWidth={2} />
-            )}
-          </TouchableOpacity>
-        ) : (
-          <View style={{ width: 16, height: 16 }} />
-        )}
+      {item.hasChildren ? (
+        <TouchableOpacity
+          onPress={onToggleExpand}
+          activeOpacity={0.85}
+          style={{ width: 16, height: 16, alignItems: "center", justifyContent: "center" }}
+        >
+          {expanded ? (
+            <ChevronDown size={12} color={colors.fg.subtle} strokeWidth={2} />
+          ) : (
+            <ChevronRight size={12} color={colors.fg.subtle} strokeWidth={2} />
+          )}
+        </TouchableOpacity>
+      ) : (
+        <View style={{ width: 16 }} />
+      )}
 
+      <View style={{ flex: 1, gap: 2 }}>
         <Text
           numberOfLines={1}
           style={{
-            flex: 1,
             color: colors.fg.default,
             fontSize: 11,
             lineHeight: 15,
@@ -181,58 +173,30 @@ function TreeRow({
         >
           {item.label}
         </Text>
-          </View>
-
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            {item.textPreview ? (
-              <Text
-                numberOfLines={1}
-                style={{
-                  marginLeft: 22,
-                  flex: 1,
-                  color: colors.fg.muted,
-                  fontSize: 10,
-                  lineHeight: 14,
-                  fontFamily: fonts.mono.regular,
-                }}
-              >
-                {item.textPreview}
-              </Text>
-            ) : (
-              <View style={{ flex: 1 }} />
-            )}
-
-            {item.hasChildren ? (
-              <Text
-                style={{
-                  color: colors.fg.subtle,
-                  fontSize: 9,
-                  fontFamily: fonts.mono.regular,
-                }}
-              >
-                {item.childCount}
-              </Text>
-            ) : null}
-          </View>
-        </View>
-
-        <TouchableOpacity
-          onPress={onOpenDetail}
-          activeOpacity={0.85}
-          style={{
-            width: 28,
-            alignSelf: "stretch",
-            alignItems: "center",
-            justifyContent: "center",
-            borderRadius: radius.md,
-            backgroundColor: selected ? colors.bg.base : colors.bg.raised,
-            borderWidth: 1,
-            borderColor: colors.bg.raised,
-          }}
-        >
-          <SquarePen size={13} color={colors.fg.default} strokeWidth={2} />
-        </TouchableOpacity>
+        {item.textPreview ? (
+          <Text
+            numberOfLines={1}
+            style={{
+              color: colors.fg.muted,
+              fontSize: 10,
+              lineHeight: 14,
+              fontFamily: fonts.mono.regular,
+            }}
+          >
+            {item.textPreview}
+          </Text>
+        ) : null}
       </View>
+
+      {item.hasChildren ? (
+        <Text style={{ color: colors.fg.muted, fontSize: 9, fontFamily: fonts.mono.regular }}>
+          {item.childCount}
+        </Text>
+      ) : null}
+
+      <TouchableOpacity onPress={onOpenDetail} activeOpacity={0.7} style={{ padding: 4 }}>
+        <SquarePen size={13} color={colors.fg.subtle} strokeWidth={2} />
+      </TouchableOpacity>
     </TouchableOpacity>
   );
 }
@@ -1059,12 +1023,16 @@ export default function ElementsSection({
   };
 
   return (
-    <View style={{ flex: 1, gap: 10 }}>
+    <View style={{ flex: 1 }}>
       <View
         style={{
-          minHeight: 34,
           flexDirection: "row",
           alignItems: "center",
+          paddingHorizontal: 8,
+          paddingVertical: 4,
+          backgroundColor: colors.bg.raised,
+          borderBottomWidth: 0.5,
+          borderBottomColor: colors.border.secondary,
           gap: 8,
         }}
       >
@@ -1078,67 +1046,28 @@ export default function ElementsSection({
             justifyContent: "center",
             borderRadius: radius.full,
             backgroundColor: isPicking ? colors.accent.default : colors.bg.base,
-            borderWidth: isPicking ? 0 : 1,
-            borderColor: colors.bg.raised,
+            borderWidth: 0.5,
+            borderColor: isPicking ? colors.accent.default : colors.border.secondary,
           }}
         >
-          <MousePointerClick
-            size={13}
-            color={isPicking ? '#ffffff' : colors.fg.default}
-            strokeWidth={2}
-          />
+          <MousePointerClick size={13} color={isPicking ? "#ffffff" : colors.fg.default} strokeWidth={2} />
         </TouchableOpacity>
 
         {selectedSnapshot ? (
-        <View
-          style={{
-            flex: 1,
-            gap: 2,
-          }}
-        >
-          <Text
-            numberOfLines={1}
-            style={{
-              color: colors.fg.default,
-              fontSize: 11,
-              fontFamily: fonts.mono.medium,
-            }}
-          >
-            {selectedSnapshot.label}
-          </Text>
-          <Text
-            numberOfLines={1}
-            style={{
-              color: colors.fg.subtle,
-              fontSize: 9,
-              fontFamily: fonts.sans.medium,
-              textTransform: "uppercase",
-            }}
-          >
-            {selectedSnapshot.nodeType} • {selectedSnapshot.childCount} child{selectedSnapshot.childCount === 1 ? "" : "ren"}
-          </Text>
-        </View>
+          <View style={{ flex: 1, gap: 1 }}>
+            <Text numberOfLines={1} style={{ color: colors.fg.default, fontSize: 11, fontFamily: fonts.mono.medium }}>
+              {selectedSnapshot.label}
+            </Text>
+            <Text numberOfLines={1} style={{ color: colors.fg.muted, fontSize: 9, fontFamily: fonts.sans.medium, textTransform: "uppercase" }}>
+              {selectedSnapshot.nodeType} · {selectedSnapshot.childCount} child{selectedSnapshot.childCount === 1 ? "" : "ren"}
+            </Text>
+          </View>
         ) : (
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text
-              numberOfLines={1}
-              style={{
-                color: colors.fg.default,
-                fontSize: 11,
-                fontFamily: fonts.sans.semibold,
-              }}
-            >
+          <View style={{ flex: 1, gap: 1 }}>
+            <Text numberOfLines={1} style={{ color: colors.fg.default, fontSize: 11, fontFamily: fonts.sans.semibold }}>
               No DOM snapshot yet
             </Text>
-            <Text
-              numberOfLines={1}
-              style={{
-                color: colors.fg.subtle,
-                fontSize: 9,
-                fontFamily: fonts.sans.medium,
-                textTransform: "uppercase",
-              }}
-            >
+            <Text numberOfLines={1} style={{ color: colors.fg.muted, fontSize: 9, fontFamily: fonts.sans.medium, textTransform: "uppercase" }}>
               Load the page or pick an element
             </Text>
           </View>
@@ -1154,8 +1083,8 @@ export default function ElementsSection({
             justifyContent: "center",
             borderRadius: radius.full,
             backgroundColor: colors.bg.base,
-            borderWidth: 1,
-            borderColor: colors.bg.raised,
+            borderWidth: 0.5,
+            borderColor: colors.border.secondary,
           }}
         >
           <RefreshCw size={13} color={colors.fg.default} strokeWidth={2} />
@@ -1213,9 +1142,9 @@ export default function ElementsSection({
           ItemSeparatorComponent={() => (
             <View
               style={{
-                height: 1,
-                backgroundColor: colors.bg.raised,
-                marginVertical: 1,
+                height: 0.5,
+                backgroundColor: colors.border.secondary,
+                marginHorizontal: 14,
               }}
             />
           )}

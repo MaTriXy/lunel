@@ -1,7 +1,7 @@
 import { useTheme } from "@/contexts/ThemeContext";
-import { Plus, RefreshCw, Trash2, X } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Plus, RefreshCw, Trash2 } from "lucide-react-native";
+import React, { useRef, useMemo, useState } from "react";
+import { Animated, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 function sortPorts(values: number[]): number[] {
   return [...values].sort((a, b) => a - b);
@@ -27,6 +27,27 @@ export default function ProxiesSection({
   const { colors, fonts, radius } = useTheme();
   const [draftPort, setDraftPort] = useState("");
   const [showAddRow, setShowAddRow] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const spinValue = useRef(new Animated.Value(0)).current;
+  const spinAnimation = useRef<Animated.CompositeAnimation | null>(null);
+
+  const handleRefresh = () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    spinValue.setValue(0);
+    spinAnimation.current = Animated.loop(
+      Animated.timing(spinValue, { toValue: 1, duration: 700, useNativeDriver: true })
+    );
+    spinAnimation.current.start();
+    onRefresh();
+    setTimeout(() => {
+      spinAnimation.current?.stop();
+      spinValue.setValue(0);
+      setIsRefreshing(false);
+    }, 1000);
+  };
+
+  const spin = spinValue.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
   const [localError, setLocalError] = useState<string | null>(null);
   const [pendingDeletePort, setPendingDeletePort] = useState<number | null>(null);
 
@@ -57,13 +78,13 @@ export default function ProxiesSection({
   };
 
   return (
-    <View style={{ flex: 1, gap: 10 }}>
+    <View style={{ flex: 1, gap: 6 }}>
       <View
         style={{
           flexDirection: "row",
           alignItems: "center",
-          justifyContent: "space-between",
-          gap: 8,
+          justifyContent: "flex-end",
+          gap: 6,
         }}
       >
         <TouchableOpacity
@@ -97,7 +118,7 @@ export default function ProxiesSection({
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={onRefresh}
+          onPress={handleRefresh}
           activeOpacity={0.85}
           style={{
             width: 28,
@@ -110,96 +131,74 @@ export default function ProxiesSection({
             borderColor: colors.bg.raised,
           }}
         >
-          <RefreshCw size={13} color={colors.fg.default} strokeWidth={2} />
+          <Animated.View style={{ transform: [{ rotate: spin }] }}>
+            <RefreshCw size={13} color={colors.fg.default} strokeWidth={2} />
+          </Animated.View>
         </TouchableOpacity>
       </View>
 
       {showAddRow ? (
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 8,
-            padding: 10,
-            borderRadius: radius.lg,
-            backgroundColor: colors.bg.raised,
-          }}
-        >
-          <TextInput
-            value={draftPort}
-            onChangeText={(value) => {
-              setDraftPort(value.replace(/[^0-9]/g, ""));
-              if (localError) setLocalError(null);
-            }}
-            onSubmitEditing={() => {
-              void handleAddPort();
-            }}
-            placeholder="Port"
-            placeholderTextColor={colors.fg.subtle}
-            keyboardType="number-pad"
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginVertical: 4 }}>
+          <View
             style={{
               flex: 1,
-            height: 36,
-            color: colors.fg.default,
-            fontSize: 11,
-            fontFamily: fonts.mono.regular,
-            paddingHorizontal: 10,
-            borderRadius: radius.md,
-            backgroundColor: colors.bg.base,
-            borderWidth: 1,
-            borderColor: colors.border.secondary,
-          }}
-        />
+              minHeight: 32,
+              paddingHorizontal: 10,
+              backgroundColor: colors.bg.raised,
+              borderRadius: 8,
+              borderWidth: 0.5,
+              borderColor: colors.border.secondary,
+              justifyContent: "center",
+            }}
+          >
+            <TextInput
+              value={draftPort}
+              onChangeText={(value) => {
+                setDraftPort(value.replace(/[^0-9]/g, ""));
+                if (localError) setLocalError(null);
+              }}
+              onSubmitEditing={() => {
+                void handleAddPort();
+              }}
+              placeholder="Port number"
+              placeholderTextColor={colors.fg.subtle}
+              keyboardType="number-pad"
+              autoFocus
+              style={{
+                color: colors.fg.default,
+                fontSize: 11,
+                fontFamily: fonts.mono.regular,
+                paddingVertical: 0,
+              }}
+            />
+          </View>
 
           <TouchableOpacity
             onPress={() => {
               void handleAddPort();
             }}
-            disabled={isSubmitting}
+            disabled={isSubmitting || draftPort.trim() === ""}
             activeOpacity={0.85}
             style={{
-              height: 30,
+              height: 32,
               paddingHorizontal: 12,
-              borderRadius: radius.full,
-              backgroundColor: isSubmitting ? colors.bg.base : colors.accent.default,
-              flexDirection: "row",
+              borderRadius: 8,
+              backgroundColor: isSubmitting || draftPort.trim() === "" ? colors.bg.raised : colors.accent.default,
               alignItems: "center",
               justifyContent: "center",
-              gap: 6,
-              borderWidth: isSubmitting ? 1 : 0,
-              borderColor: colors.border.secondary,
+              borderWidth: 0.5,
+              borderColor: isSubmitting || draftPort.trim() === "" ? colors.border.secondary : "transparent",
             }}
           >
             <Text
               style={{
-                color: isSubmitting ? colors.fg.muted : "#ffffff",
+                color: isSubmitting || draftPort.trim() === "" ? colors.fg.muted : "#ffffff",
                 fontSize: 10,
                 fontFamily: fonts.sans.semibold,
               }}
             >
               Save
             </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => {
-              setShowAddRow(false);
-              setDraftPort("");
-              setLocalError(null);
-            }}
-            activeOpacity={0.85}
-            style={{
-              width: 30,
-              height: 30,
-              borderRadius: radius.full,
-              backgroundColor: colors.bg.base,
-              borderWidth: 1,
-              borderColor: colors.border.secondary,
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <X size={13} color={colors.fg.default} strokeWidth={2} />
           </TouchableOpacity>
         </View>
       ) : null}

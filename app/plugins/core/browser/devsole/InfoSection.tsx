@@ -1,18 +1,15 @@
 import * as Clipboard from "expo-clipboard";
 import { useTheme } from "@/contexts/ThemeContext";
-import { RefreshCw } from "lucide-react-native";
 import React, { useEffect, useMemo } from "react";
-import { Pressable, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { DevsoleInfoSnapshot } from "./types";
 
 export default function InfoSection({
   snapshot,
   listKey,
-  onRefresh,
 }: {
   snapshot: DevsoleInfoSnapshot | null;
   listKey: string;
-  onRefresh: () => void;
 }) {
   const { colors, fonts, radius } = useTheme();
 
@@ -31,118 +28,90 @@ export default function InfoSection({
   }, [snapshot]);
 
   return (
-    <View style={{ flex: 1, gap: 10 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end" }}>
-        <TouchableOpacity
-          onPress={onRefresh}
-          activeOpacity={0.85}
+    <ScrollView
+      style={{ flex: 1 }}
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={{ gap: 10, paddingBottom: 12 }}
+    >
+      {sections.length === 0 ? (
+        <View style={{ paddingTop: 48, alignItems: "center" }}>
+          <Text style={{ color: colors.fg.muted, fontSize: 12, fontFamily: fonts.sans.regular }}>
+            No info available
+          </Text>
+        </View>
+      ) : null}
+
+      {sections.map(([section, fields]) => (
+        <View
+          key={section}
           style={{
-            width: 28,
-            height: 28,
-            borderRadius: radius.full,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: colors.bg.base,
+            borderRadius: radius.md,
             borderWidth: 1,
-            borderColor: colors.bg.raised,
+            borderColor: colors.border.secondary,
+            overflow: "hidden",
           }}
         >
-          <RefreshCw size={13} color={colors.fg.default} strokeWidth={2} />
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingBottom: 8 }}>
-        {sections.length === 0 ? (
-          <View style={{ paddingTop: 40, alignItems: "center", gap: 8 }}>
-            <Text style={{ color: colors.fg.default, fontSize: 14, fontFamily: fonts.sans.semibold }}>
-              No info yet
-            </Text>
-          </View>
-        ) : null}
-
-        {sections.map(([section, fields]) => (
           <View
-            key={section}
             style={{
-              overflow: "hidden",
+              paddingHorizontal: 10,
+              paddingVertical: 7,
+              backgroundColor: colors.bg.raised,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border.secondary,
             }}
           >
-            <View
+            <Text
+              style={{
+                color: colors.fg.muted,
+                fontSize: 9,
+                fontFamily: fonts.sans.semibold,
+                textTransform: "uppercase",
+                letterSpacing: 0.6,
+              }}
+            >
+              {section}
+            </Text>
+          </View>
+
+          {fields.map((field, index) => (
+            <Pressable
+              key={`${section}-${field.label}`}
+              onLongPress={() => Clipboard.setStringAsync(field.value)}
+              delayLongPress={180}
               style={{
                 paddingHorizontal: 10,
                 paddingVertical: 8,
-                borderBottomWidth: 1,
+                borderBottomWidth: index === fields.length - 1 ? 0 : 1,
                 borderBottomColor: colors.border.secondary,
+                gap: 2,
               }}
             >
               <Text
                 style={{
-                  color: colors.fg.subtle,
+                  color: colors.fg.muted,
                   fontSize: 9,
                   fontFamily: fonts.sans.medium,
                   textTransform: "uppercase",
+                  letterSpacing: 0.4,
                 }}
               >
-                {section}
+                {field.label}
               </Text>
-            </View>
-
-            {fields.map((field, index) => (
-              <View
-                key={`${section}-${field.label}`}
+              <Text
                 style={{
-                  flexDirection: "row",
-                  alignItems: "stretch",
-                  borderBottomWidth: index === fields.length - 1 ? 0 : 1,
-                  borderBottomColor: colors.border.secondary,
+                  color: colors.fg.default,
+                  fontSize: 11,
+                  lineHeight: 16,
+                  fontFamily: fonts.mono.regular,
                 }}
+                selectable
               >
-                <View
-                  style={{
-                  width: 118,
-                  paddingHorizontal: 10,
-                  paddingVertical: 9,
-                  justifyContent: "center",
-                }}
-              >
-                  <Text
-                    style={{
-                      color: colors.fg.subtle,
-                      fontSize: 10,
-                      lineHeight: 14,
-                      fontFamily: fonts.sans.medium,
-                    }}
-                  >
-                    {field.label}
-                  </Text>
-                </View>
-
-                <Pressable
-                  onLongPress={() => Clipboard.setStringAsync(field.value)}
-                  delayLongPress={180}
-                  style={{
-                    flex: 1,
-                    paddingHorizontal: 10,
-                    paddingVertical: 9,
-                    justifyContent: "center",
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: colors.fg.default,
-                      fontSize: 10,
-                      lineHeight: 14,
-                      fontFamily: fonts.mono.regular,
-                    }}
-                  >
-                    {field.value || "—"}
-                  </Text>
-                </Pressable>
-              </View>
-            ))}
-          </View>
-        ))}
-      </ScrollView>
-    </View>
+                {field.value || "—"}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ))}
+    </ScrollView>
   );
 }
