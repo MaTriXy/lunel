@@ -3,14 +3,17 @@ import Toast from "@/components/Toast";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import { AlertCircle, ArrowLeft, ArrowRight, Info, LoaderCircle, QrCode, X } from "lucide-react-native";
+import { AlertCircle, ArrowLeft, ArrowRight, Info, LoaderCircle, QrCode, Terminal, X } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import {
   Animated,
+  Dimensions,
   Easing,
   Keyboard,
+  Linking,
   Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,21 +23,106 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import * as NavigationBar from "expo-navigation-bar";
 import Svg, { Path } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useConnection } from "../contexts/ConnectionContext";
-import ReAnimated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import ReAnimated, { useAnimatedStyle, useSharedValue, withSpring, withTiming, runOnJS } from "react-native-reanimated";
+import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import { useKeyboardHandler } from "react-native-keyboard-controller";
 
 
 const TABLET_BREAKPOINT = 768;
 const WHITE = "#FFFFFF";
 const BLACK = "#000000";
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+
+function SwipeableSheet({ visible, onClose, styles, fonts, typography, children }: { visible: boolean; onClose: () => void; styles: any; fonts: any; typography: any; children: (animatedClose: () => void) => React.ReactNode }) {
+  const translateY = useSharedValue(SCREEN_HEIGHT);
+
+  const animatedClose = () => {
+    translateY.value = withTiming(SCREEN_HEIGHT, { duration: 300 }, () => {
+      runOnJS(onClose)();
+    });
+  };
+
+  useEffect(() => {
+    if (visible) {
+      translateY.value = SCREEN_HEIGHT;
+      translateY.value = withTiming(0, { duration: 320 });
+    }
+  }, [visible]);
+
+  const pan = Gesture.Pan()
+    .onUpdate((e) => {
+      if (e.translationY > 0) translateY.value = e.translationY;
+    })
+    .onEnd((e) => {
+      if (e.translationY > 120 || e.velocityY > 800) {
+        translateY.value = withTiming(SCREEN_HEIGHT, { duration: 300 }, () => {
+          runOnJS(onClose)();
+        });
+      } else {
+        translateY.value = withTiming(0, { duration: 200 });
+      }
+    });
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  return (
+    <Modal visible={visible} animationType="none" transparent onRequestClose={animatedClose}>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <TouchableWithoutFeedback onPress={animatedClose}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <GestureDetector gesture={pan}>
+                <ReAnimated.View style={[styles.modalSheet, animatedStyle]}>
+                  <View style={{ width: 36, height: 4, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.2)", alignSelf: "center", marginBottom: 16 }} />
+                  {children(animatedClose)}
+                </ReAnimated.View>
+              </GestureDetector>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </GestureHandlerRootView>
+    </Modal>
+  );
+}
+
+function CopyableCommand({ command, fonts, colors }: { command: string; fonts: ReturnType<typeof useTheme>["fonts"]; colors: ReturnType<typeof useTheme>["colors"] }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    const Clipboard = await import("expo-clipboard");
+    await Clipboard.setStringAsync(command);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1200);
+  };
+
+  return (
+    <View style={{ backgroundColor: colors.bg.raised, borderRadius: 9, paddingHorizontal: 10, paddingVertical: 8, flexDirection: "row", alignItems: "center", gap: 8 }}>
+      <Terminal size={14} color={colors.fg.muted} strokeWidth={2} />
+      <Text style={{ fontFamily: fonts.mono.regular, fontSize: 12, color: colors.fg.default, flex: 1 }}>
+        {command}
+      </Text>
+      <Pressable onPress={handleCopy} hitSlop={8} style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
+        {copied
+          ? <Ionicons name="checkmark" size={14} color={colors.fg.muted} />
+          : <Ionicons name="copy-outline" size={14} color={colors.fg.muted} />
+        }
+      </Pressable>
+    </View>
+  );
+}
 
 const LunelConnect = () => {
   const router = useRouter();
-  const { fonts, typography } = useTheme();
+  const { colors, fonts, typography } = useTheme();
   const insets = useSafeAreaInsets();
   const {
     connect,
@@ -365,20 +453,17 @@ const LunelConnect = () => {
       />
 
       {/* How to connect guide */}
-      <Modal visible={showGuide} animationType="slide" transparent onRequestClose={() => setShowGuide(false)}>
-        <TouchableWithoutFeedback onPress={() => setShowGuide(false)}>
-          <View style={styles.modalOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={styles.modalSheet}>
+      <SwipeableSheet visible={showGuide} onClose={() => setShowGuide(false)} styles={styles} fonts={fonts} typography={typography}>
+        {(animatedClose) => (<>
             <View style={styles.modalHeader}>
               <View>
-                <Text style={[styles.modalTitle, { fontFamily: fonts.sans.regular, fontSize: typography.heading }]}>How to connect</Text>
-                <Text style={[styles.modalSubtitle, { fontSize: typography.body }]}>Two steps, under a minute</Text>
+                <Text style={[styles.modalTitle, { fontFamily: fonts.sans.semibold }]}>How to connect</Text>
+                <Text style={[styles.modalSubtitle, { fontSize: 12, fontFamily: fonts.sans.regular }]}>Run one command, scan a QR, you're in</Text>
               </View>
               <TouchableOpacity
                 onPress={() => {
                   void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setShowGuide(false);
+                  animatedClose();
                 }}
                 style={styles.modalClose}
               >
@@ -386,39 +471,100 @@ const LunelConnect = () => {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {/* Step 1 */}
-              <View style={styles.step}>
-                <View style={styles.stepContent}>
-                  <Text style={[styles.stepTitle, { fontFamily: fonts.sans.regular, fontSize: typography.body }]}>1. Run one command in your project</Text>
-                  <Text style={[styles.stepDesc, { fontSize: typography.body }]}>Open your terminal inside your project directory and run:</Text>
-                  <View style={styles.codeBlock}>
-                    <Text style={styles.codeText}>npx lunel-cli</Text>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+
+              {/* Steps */}
+              <View>
+
+                {/* Step 1 */}
+                <View style={{ flexDirection: "row", gap: 14 }}>
+                  <View style={{ alignItems: "center", width: 22 }}>
+                    <View style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: colors.bg.raised, alignItems: "center", justifyContent: "center" }}>
+                      <Text style={{ fontSize: 11, fontFamily: fonts.sans.semibold, color: colors.fg.muted }}>1</Text>
+                    </View>
+                    <View style={{ width: 1, flex: 1, backgroundColor: colors.fg.default + "12", marginTop: 4, marginBottom: 4 }} />
                   </View>
-                  <Text style={[styles.stepDesc, { fontSize: typography.body }]}>A QR code and a short code will appear instantly. No installation needed. Works with any stack: Next.js, React Native, Node, and more.</Text>
+                  <View style={{ flex: 1, paddingBottom: 20 }}>
+                    <Text style={{ fontSize: 14, fontFamily: fonts.sans.semibold, color: colors.fg.default, marginBottom: 4, lineHeight: 22 }}>
+                      Open your terminal on your PC
+                    </Text>
+                    <Text style={{ fontSize: 13, fontFamily: fonts.sans.regular, color: colors.fg.muted, lineHeight: 20 }}>
+                      Navigate to the repository where you want Lunel to work
+                    </Text>
+                  </View>
                 </View>
+
+                {/* Step 2 */}
+                <View style={{ flexDirection: "row", gap: 14 }}>
+                  <View style={{ alignItems: "center", width: 22 }}>
+                    <View style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: colors.bg.raised, alignItems: "center", justifyContent: "center" }}>
+                      <Text style={{ fontSize: 11, fontFamily: fonts.sans.semibold, color: colors.fg.muted }}>2</Text>
+                    </View>
+                    <View style={{ width: 1, flex: 1, backgroundColor: colors.fg.default + "12", marginTop: 4, marginBottom: 4 }} />
+                  </View>
+                  <View style={{ flex: 1, paddingBottom: 20 }}>
+                    <Text style={{ fontSize: 14, fontFamily: fonts.sans.semibold, color: colors.fg.default, marginBottom: 4, lineHeight: 22 }}>
+                      Run the command
+                    </Text>
+                    <Text style={{ fontSize: 12, fontFamily: fonts.sans.regular, color: colors.fg.muted, lineHeight: 18, marginBottom: 8 }}>
+                      First time in a repo it gives you a QR code to connect. Run it again and it just resumes the last session without a new QR. To reconnect, tap the previous session in the app
+                    </Text>
+                    <CopyableCommand command="npx lunel-cli" fonts={fonts} colors={colors} />
+                    <Text style={{ fontSize: 12, fontFamily: fonts.sans.regular, color: colors.fg.muted, lineHeight: 18, marginTop: 8, marginBottom: 6 }}>
+                      Need a fresh code?
+                    </Text>
+                    <CopyableCommand command="npx lunel-cli -n" fonts={fonts} colors={colors} />
+                  </View>
+                </View>
+
+                {/* Step 3 */}
+                <View style={{ flexDirection: "row", gap: 14 }}>
+                  <View style={{ alignItems: "center", width: 22 }}>
+                    <View style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: colors.bg.raised, alignItems: "center", justifyContent: "center" }}>
+                      <Text style={{ fontSize: 11, fontFamily: fonts.sans.semibold, color: colors.fg.muted }}>3</Text>
+                    </View>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontFamily: fonts.sans.semibold, color: colors.fg.default, marginBottom: 4, lineHeight: 22 }}>
+                      Scan or type the code
+                    </Text>
+                    <Text style={{ fontSize: 13, fontFamily: fonts.sans.regular, color: colors.fg.muted, lineHeight: 20 }}>
+                      A QR code and a short code appear in your terminal. Scan with your camera or type the code in the input field and you're in
+                    </Text>
+                  </View>
+                </View>
+
               </View>
 
-              {/* Step 2 */}
-              <View style={styles.step}>
-                <View style={styles.stepContent}>
-                  <Text style={[styles.stepTitle, { fontFamily: fonts.sans.regular, fontSize: typography.body }]}>2. Scan and you're in</Text>
-                  <Text style={[styles.stepDesc, { fontSize: typography.body }]}>Point your camera at the QR code or type the short code manually in the input below. Your codebase is live on your phone in seconds.</Text>
-                  <Text style={[styles.stepNote, { fontSize: typography.body }]}>Keep your laptop open during the session. Everything runs on your machine. We just bridge the gap.</Text>
-                </View>
-              </View>
-              {/* Security note */}
-              <View style={styles.securityNote}>
-<Text style={styles.securityNoteText}>
-                  For security purposes, each QR code and session code can only be used once. Once scanned, it expires immediately. Run npx lunel-cli again to generate a fresh one.
+              {/* Done */}
+              <View style={{ marginTop: 24 }}>
+                <Text style={{ fontSize: 13, fontFamily: fonts.sans.regular, color: colors.fg.muted, lineHeight: 20 }}>
+                  Once connected, your whole machine lives in your pocket. Ship from the couch, the toilet, anywhere
                 </Text>
               </View>
+
+              {/* YouTube */}
+              <Pressable
+                onPress={() => Linking.openURL("https://www.youtube.com/@uselunel")}
+                style={({ pressed }) => ({
+                  marginHorizontal: 0,
+                  marginTop: 20,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 10,
+                  opacity: pressed ? 0.5 : 1,
+                })}
+              >
+                <FontAwesome name="youtube-play" size={15} color={colors.fg.muted} />
+                <Text style={{ fontSize: 13, fontFamily: fonts.sans.regular, color: colors.fg.muted }}>
+                  Watch the tutorial on YouTube
+                </Text>
+                <Ionicons name="chevron-forward" size={13} color={colors.fg.muted} style={{ marginLeft: -4 } as any} />
+              </Pressable>
+
             </ScrollView>
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
+        </>)}
+      </SwipeableSheet>
     </View>
     </TouchableWithoutFeedback>
   );
@@ -528,11 +674,11 @@ const styles = StyleSheet.create({
   },
   modalSheet: {
     backgroundColor: "#111111",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 24,
-    paddingTop: 18,
-    paddingBottom: 48,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 0,
     maxHeight: "80%",
   },
   modalHandle: {
@@ -550,7 +696,7 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   modalTitle: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: "700",
     color: WHITE,
   },
