@@ -3,14 +3,24 @@ import Entypo from "@expo/vector-icons/Entypo";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import {
-  Bot,
+  Activity,
+  Code2,
+  Cpu,
   FolderGit2,
+  FolderSearch,
+  GitBranch,
+  Globe,
+  Network,
   QrCode,
   Smartphone,
   SquareTerminal,
   Terminal,
+  Type,
+  Shield,
+  Sparkles,
 } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -21,6 +31,7 @@ import {
   Image,
   Linking,
   Pressable,
+  ScrollView,
   Text,
   View,
   ViewToken,
@@ -63,11 +74,10 @@ const PAGES: Page[] = [
   },
   {
     id: "3",
-    Icon: Bot as LucideIcon,
-    label: "Code Smarter",
-    title: "AI-Powered Assistant",
-    description:
-      "Get intelligent code completions, refactoring suggestions, and an AI chat that understands your codebase.",
+    Icon: Sparkles as LucideIcon,
+    label: "Everything You Need",
+    title: "Packed with Tools",
+    description: "",
     color: "#8b5cf6",
   },
   {
@@ -249,14 +259,14 @@ function ProductModePage() {
           {CONNECT_POINTS.map((point) => (
             <View key={point} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
               <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: colors.fg.muted }} />
-              <Text style={{ fontSize: 13, fontFamily: fonts.sans.regular, color: colors.fg.muted, flex: 1 }}>{point}</Text>
+              <Text style={{ fontSize: 12, fontFamily: fonts.sans.regular, color: colors.fg.muted, flex: 1 }}>{point}</Text>
             </View>
           ))}
         </View>
 
         <View style={{ alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, backgroundColor: colors.bg.raised }}>
-          <Terminal size={14} color={colors.fg.muted} strokeWidth={2} />
-          <Text style={{ fontFamily: fonts.mono.regular, fontSize: 12, color: colors.fg.default }}>npx lunel-cli</Text>
+          <Ionicons name="gift" size={14} color={colors.fg.default} />
+          <Text style={{ fontFamily: fonts.sans.medium, fontSize: 12, color: colors.fg.default }}>Lifetime free</Text>
         </View>
       </View>
 
@@ -278,7 +288,7 @@ function ProductModePage() {
           {CLOUD_POINTS.map((point) => (
             <View key={point} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
               <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: colors.fg.muted }} />
-              <Text style={{ fontSize: 13, fontFamily: fonts.sans.regular, color: colors.fg.muted, flex: 1 }}>{point}</Text>
+              <Text style={{ fontSize: 12, fontFamily: fonts.sans.regular, color: colors.fg.muted, flex: 1 }}>{point}</Text>
             </View>
           ))}
         </View>
@@ -293,6 +303,253 @@ function ProductModePage() {
   );
 }
 
+type Feature = {
+  name: string;
+  description: string;
+  points: string[];
+  Icon: LucideIcon;
+  color: string;
+};
+
+const FEATURES: Feature[] = [
+  {
+    name: "AI Agents",
+    description: "Your AI coding partner, built into the workspace",
+    points: [
+      "Run Codex and OpenCode inside your workspace",
+      "50+ models including Claude, GPT-4o, Gemini, and more",
+      "Switch between Plan, Build, and other agent modes",
+      "Record voice, transcribed instantly into a prompt",
+      "Attach files and images, review diffs before applying",
+    ],
+    Icon: Sparkles,
+    color: "#8b5cf6",
+  },
+  {
+    name: "Browser",
+    description: "A full browser with dev tools baked in",
+    points: [
+      "Debug your web app as if you were on desktop",
+      "Watch every network request fly by in real time",
+      "Tweak elements and styles live without reloading",
+      "Catch errors and console logs as they happen",
+      "Intercept and modify traffic with proxy support",
+    ],
+    Icon: Globe,
+    color: "#06b6d4",
+  },
+  {
+    name: "Code Editor",
+    description: "A proper editor built for mobile",
+    points: [
+      "Syntax highlighting across 20+ languages",
+      "Edit multiple files without losing your place",
+      "Smart indentation keeps your code clean",
+      "Tap a symbol to jump, swipe between open files",
+      "Keyboard designed for writing real code on mobile",
+    ],
+    Icon: Code2,
+    color: "#6366f1",
+  },
+  {
+    name: "File Explorer",
+    description: "Browse and manage your entire project tree",
+    points: [
+      "Navigate any project, no matter how large",
+      "Find files fast with search and smart filters",
+      "Create, rename, move, and delete anything",
+      "Jump straight into editing with a single tap",
+      "Copy paths and open files across tools instantly",
+    ],
+    Icon: FolderSearch,
+    color: "#f59e0b",
+  },
+  {
+    name: "Terminal",
+    description: "A real shell, not a wrapper",
+    points: [
+      "Run anything you can run on your desktop",
+      "Sessions stay alive even when you disconnect",
+      "Install packages, run builds, and deploy remotely",
+      "SSH into any server directly from the app",
+      "Full color support so your terminal looks right",
+    ],
+    Icon: SquareTerminal,
+    color: "#10b981",
+  },
+  {
+    name: "Version Control",
+    description: "Full Git workflow without leaving the app",
+    points: [
+      "Stage files or individual hunks with precision",
+      "Commit, push, and ship code from anywhere",
+      "Browse the full commit history at a glance",
+      "Create and switch branches on the fly",
+      "Pull, merge, and stay in sync with your team",
+    ],
+    Icon: GitBranch,
+    color: "#ef4444",
+  },
+  {
+    name: "Process Manager",
+    description: "See and control every process on your machine",
+    points: [
+      "See everything running on your machine at once",
+      "Find any process instantly with live search",
+      "Kill stuck or runaway processes with one tap",
+      "Start new processes directly from the app",
+      "Stream live output without opening a terminal",
+    ],
+    Icon: Cpu,
+    color: "#f97316",
+  },
+  {
+    name: "Port Manager",
+    description: "Know what's listening and shut it down fast",
+    points: [
+      "See every active port and exactly what owns it",
+      "Kill a port listener with one tap, no terminal needed",
+      "Free up blocked ports before they slow you down",
+      "Search by port number or process name",
+      "Spot port conflicts before they break your server",
+    ],
+    Icon: Network,
+    color: "#3b82f6",
+  },
+  {
+    name: "API Testing",
+    description: "Test endpoints without leaving your phone",
+    points: [
+      "Fire requests with any HTTP method in seconds",
+      "Set headers, auth tokens, and a request body",
+      "Read the full response: status, headers, and body",
+      "History keeps every request so you never lose work",
+      "Route requests through your machine to hit local APIs",
+    ],
+    Icon: Shield,
+    color: "#a855f7",
+  },
+  {
+    name: "Text Tools",
+    description: "A developer's Swiss Army knife",
+    points: [
+      "Format messy JSON or XML in one tap",
+      "Encode and decode Base64 and URLs on the fly",
+      "Generate MD5, SHA-1, and SHA-256 hashes instantly",
+      "Convert Unix timestamps to readable dates",
+      "Every dev utility you need, no browser tab required",
+    ],
+    Icon: Type,
+    color: "#14b8a6",
+  },
+  {
+    name: "Resource Monitor",
+    description: "Live system stats with real-time graphs",
+    points: [
+      "Watch CPU and memory use as it happens",
+      "See which cores are under load at any moment",
+      "Track disk reads and writes in real time",
+      "Monitor network usage in and out",
+      "Spot bottlenecks before they crash your build",
+    ],
+    Icon: Activity,
+    color: "#ec4899",
+  },
+];
+
+function FeatureCard({ feature }: { feature: Feature }) {
+  const { colors, fonts } = useTheme();
+  return (
+    <View style={{ backgroundColor: colors.bg.raised, borderRadius: 14, padding: 12 }}>
+      {/* Icon + name row */}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 6 }}>
+        <View
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 10,
+            backgroundColor: feature.color + "18",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <feature.Icon size={18} color={feature.color} strokeWidth={1.8} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 14, fontFamily: fonts.sans.semibold, color: colors.fg.default, lineHeight: 19 }}>
+            {feature.name}
+          </Text>
+          <Text style={{ fontSize: 11.5, fontFamily: fonts.sans.regular, color: colors.fg.muted, lineHeight: 15, marginTop: 1 }}>
+            {feature.description}
+          </Text>
+        </View>
+      </View>
+
+      {/* Divider */}
+      <View style={{ height: 0.5, backgroundColor: colors.fg.default + "10", marginVertical: 8 }} />
+
+      {/* Bullet points */}
+      <View style={{ gap: 5 }}>
+        {feature.points.map((point) => (
+          <View key={point} style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+            <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: feature.color + "bb", marginTop: 5, flexShrink: 0 }} />
+            <Text style={{ fontSize: 12, fontFamily: fonts.sans.regular, color: colors.fg.muted, lineHeight: 17, flex: 1 }}>
+              {point}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function FeaturesPage() {
+  const { colors, fonts } = useTheme();
+
+  return (
+    <View style={{ width: SCREEN_WIDTH, flex: 1 }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 80 }}
+      >
+        {/* Header */}
+        <View style={{ paddingTop: 35, paddingHorizontal: 24, marginBottom: 20 }}>
+          <Text style={{ fontSize: 25, fontFamily: fonts.sans.semibold, color: colors.fg.default, lineHeight: 32, marginBottom: 6 }}>
+            What's inside
+          </Text>
+          <Text style={{ fontSize: 14, fontFamily: fonts.sans.regular, color: colors.fg.muted, lineHeight: 22, marginBottom: 16 }}>
+            A complete dev environment in your pocket
+          </Text>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, backgroundColor: colors.bg.raised }}>
+              <FontAwesome name="github" size={13} color={colors.fg.default} />
+              <Text style={{ fontSize: 12, fontFamily: fonts.sans.medium, color: colors.fg.default }}>Open Source</Text>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, backgroundColor: colors.bg.raised }}>
+              <MaterialCommunityIcons name="shield-lock" size={13} color={colors.fg.default} />
+              <Text style={{ fontSize: 12, fontFamily: fonts.sans.medium, color: colors.fg.default }}>End-to-end encrypted</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Feature cards */}
+        <View style={{ paddingHorizontal: 20, gap: 10 }}>
+          {FEATURES.map((f) => (
+            <FeatureCard key={f.name} feature={f} />
+          ))}
+        </View>
+      </ScrollView>
+
+      {/* Bottom fade mask */}
+      <LinearGradient
+        colors={[colors.bg.base + "00", colors.bg.base]}
+        style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 80, pointerEvents: "none" }}
+      />
+    </View>
+  );
+}
+
 function OnboardingPage({ page }: { page: Page }) {
   const { colors, fonts } = useTheme();
   const { Icon } = page;
@@ -303,6 +560,10 @@ function OnboardingPage({ page }: { page: Page }) {
 
   if (page.id === "2") {
     return <ProductModePage />;
+  }
+
+  if (page.id === "3") {
+    return <FeaturesPage />;
   }
 
   return (
