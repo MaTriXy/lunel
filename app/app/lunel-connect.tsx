@@ -24,6 +24,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
+import Entypo from "@expo/vector-icons/Entypo";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import * as NavigationBar from "expo-navigation-bar";
@@ -320,7 +321,7 @@ const LunelConnect = () => {
             }}
             activeOpacity={0.8}
           >
-            <Info size={16} color={WHITE} strokeWidth={2} />
+            <Entypo name="info-with-circle" size={17} color={WHITE} />
             <Text style={[styles.learnButtonText, { fontSize: typography.body }]}>Learn how to connect</Text>
           </TouchableOpacity>
         </View>
@@ -440,7 +441,7 @@ const LunelConnect = () => {
                 <LoaderCircle size={18} color={manualCode.trim() ? WHITE : "#aaaaaa"} strokeWidth={2} />
               </Animated.View>
             ) : (
-              <ArrowRight size={18} color={manualCode.trim() ? WHITE : "#aaaaaa"} strokeWidth={1.5} />
+              <Text style={{ fontFamily: fonts.sans.semibold, fontSize: 14, color: manualCode.trim() ? WHITE : "#aaaaaa" }}>Connect</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -578,7 +579,7 @@ const styles = StyleSheet.create({
   upper: {
     flex: 1,
     overflow: "hidden",
-    borderRadius: 20,
+    borderRadius: 30,
     marginHorizontal: 4,
     marginTop: 4,
     marginBottom: 80,
@@ -589,16 +590,16 @@ const styles = StyleSheet.create({
     left: 6,
     right: 6,
     backgroundColor: BLACK,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 12,
-    borderRadius: 16,
+    borderRadius: 20,
     justifyContent: "center",
     alignItems: "center",
   },
   arrowButton: {
-    width: 44,
     height: 44,
-    borderRadius: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
     backgroundColor: "#4F46E5",
     alignItems: "center",
     justifyContent: "center",
@@ -617,7 +618,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: WHITE,
-    borderRadius: 10,
+    borderRadius: 12,
     paddingHorizontal: 18,
     gap: 10,
   },
@@ -645,7 +646,7 @@ const styles = StyleSheet.create({
   },
   cliHintRow: {
     position: "absolute",
-    bottom: 20,
+    bottom: 40,
     left: 0,
     right: 0,
     alignItems: "center",
@@ -654,17 +655,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 11,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    borderRadius: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: "rgba(255,255,255,0.18)",
   },
   learnButtonText: {
-    fontSize: 13,
+    fontSize: 15,
     color: WHITE,
-    fontWeight: "500",
+    fontWeight: "600",
     letterSpacing: 0.2,
   },
   modalOverlay: {
@@ -749,7 +750,7 @@ const styles = StyleSheet.create({
   },
   securityNote: {
     backgroundColor: "rgba(79,70,229,0.15)",
-    borderRadius: 14,
+    borderRadius: 12,
     padding: 16,
     borderWidth: 1,
     borderColor: "rgba(79,70,229,0.4)",

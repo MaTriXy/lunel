@@ -302,6 +302,13 @@ function RootLayoutContent() {
               gestureEnabled: true,
             }}
           />
+          <Stack.Screen
+            name="lunel-connect"
+            options={{
+              animation: "slide_from_right",
+              gestureEnabled: true,
+            }}
+          />
         </Stack>
       </SafeAreaView>
       </KeyboardProvider>
