@@ -6,6 +6,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { ChevronRight, History, ScanLine, X } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, BackHandler, Dimensions, Image, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import Svg, { Path } from "react-native-svg";
@@ -330,6 +331,7 @@ function PastSessionsSheet({
 
 export default function Auth() {
   const { colors, fonts, radius, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
   const ctaRadius = 10;
   const router = useRouter();
   const { getPairedSessions, removePairedSession, resumeSession, revokePairedSession, status, capabilities, disconnect } = useConnection();
@@ -547,7 +549,7 @@ export default function Auth() {
   const isPastSessionsButtonEnabled = hasLoadedPairedSessions && pairedSessions.length > 0;
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.bg.base }]}>
+    <View style={[styles.container, { backgroundColor: colors.bg.base, paddingTop: insets.top }]}>
       {availableUpdate ? (
         <View
           style={[
@@ -577,7 +579,7 @@ export default function Auth() {
           </TouchableOpacity>
         </View>
       ) : null}
-      <View style={[styles.page, isTablet && styles.pageTablet]}>
+      <View style={[styles.page, isTablet && styles.pageTablet, { paddingBottom: Math.max(insets.bottom, 28) }]}>
         <View style={styles.hero}>
           <View style={styles.centerContent}>
             <View style={styles.brand}>

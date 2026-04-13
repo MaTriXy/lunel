@@ -1,15 +1,18 @@
 import { useTheme } from "@/contexts/ThemeContext";
 import Toast from "@/components/Toast";
+import { StatusBar } from "expo-status-bar";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { AlertCircle, ArrowLeft, ArrowRight, Info, LoaderCircle, QrCode, Terminal, X } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import {
+  Alert,
   Animated,
   Dimensions,
   Easing,
   Keyboard,
+  KeyboardAvoidingView,
   Linking,
   Modal,
   Platform,
@@ -78,18 +81,20 @@ function SwipeableSheet({ visible, onClose, styles, fonts, typography, children 
   return (
     <Modal visible={visible} animationType="none" transparent onRequestClose={animatedClose}>
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <TouchableWithoutFeedback onPress={animatedClose}>
-          <View style={styles.modalOverlay}>
-            <TouchableWithoutFeedback>
-              <GestureDetector gesture={pan}>
-                <ReAnimated.View style={[styles.modalSheet, animatedStyle]}>
-                  <View style={{ width: 36, height: 4, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.2)", alignSelf: "center", marginBottom: 16 }} />
-                  {children(animatedClose)}
-                </ReAnimated.View>
-              </GestureDetector>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+          <TouchableWithoutFeedback onPress={animatedClose}>
+            <View style={styles.modalOverlay}>
+              <TouchableWithoutFeedback>
+                <GestureDetector gesture={pan}>
+                  <ReAnimated.View style={[styles.modalSheet, animatedStyle]}>
+                    <View style={{ width: 36, height: 4, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.2)", alignSelf: "center", marginBottom: 16 }} />
+                    {children(animatedClose)}
+                  </ReAnimated.View>
+                </GestureDetector>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </GestureHandlerRootView>
     </Modal>
   );
@@ -139,6 +144,7 @@ const LunelConnect = () => {
   const [toastMessage, setToastMessage] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [showCodeInput, setShowCodeInput] = useState(false);
   const keyboardHeight = useSharedValue(0);
   const bottomInset = insets.bottom;
 
@@ -164,6 +170,8 @@ const LunelConnect = () => {
   const { width } = useWindowDimensions();
   const isTablet = width >= TABLET_BREAKPOINT;
   const cornerBeat = useRef(new Animated.Value(0)).current;
+  const cornerGap = useRef(new Animated.Value(0)).current;
+  const cameraOpacity = useRef(new Animated.Value(0)).current;
   const loaderRotation = useRef(new Animated.Value(0)).current;
 
   const cornerOut = cornerBeat.interpolate({
@@ -184,6 +192,16 @@ const LunelConnect = () => {
       NavigationBar.setBackgroundColorAsync(BLACK);
       NavigationBar.setButtonStyleAsync("light");
     }
+  }, []);
+
+  useEffect(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Animated.spring(cornerGap, {
+      toValue: 14,
+      useNativeDriver: true,
+      tension: 80,
+      friction: 7,
+    }).start();
   }, []);
 
   useEffect(() => {
@@ -275,9 +293,6 @@ const LunelConnect = () => {
     handleConnectWithCode(manualCode);
   };
 
-  if (!permission) {
-    return <View style={{ flex: 1, backgroundColor: BLACK }} />;
-  }
 
   const isButtonDisabled = !manualCode.trim() || isConnecting;
 
@@ -287,19 +302,26 @@ const LunelConnect = () => {
 
       {/* Upper — Camera */}
       <View style={styles.upper}>
-        {permission.granted && (
-          <CameraView
-            style={StyleSheet.absoluteFillObject}
-            facing="back"
-            onBarcodeScanned={
-              isConnecting ? undefined : handleBarCodeScanned
-            }
-            barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-          />
+        {permission?.granted && (
+          <Animated.View style={[StyleSheet.absoluteFillObject, { opacity: cameraOpacity }]}>
+            <CameraView
+              style={StyleSheet.absoluteFillObject}
+              facing="back"
+              onCameraReady={() => {
+                Animated.timing(cameraOpacity, {
+                  toValue: 1,
+                  duration: 300,
+                  useNativeDriver: true,
+                }).start();
+              }}
+              onBarcodeScanned={isConnecting ? undefined : handleBarCodeScanned}
+              barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+            />
+          </Animated.View>
         )}
 
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
           <TouchableOpacity
             onPress={() => {
               void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -307,12 +329,129 @@ const LunelConnect = () => {
             }}
             style={styles.backButton}
           >
-            <ArrowLeft size={26} color={WHITE} strokeWidth={2} />
+            <X size={28} color={WHITE} strokeWidth={2} />
           </TouchableOpacity>
         </View>
 
+        {/* Overlay with scan cutout */}
+        {(() => {
+          const scanSize = isTablet ? Math.min(width * 0.35, 280) : width * 0.70;
+          const scanTop = insets.top + 130;
+          const sideWidth = (width - scanSize) / 2;
+          return (
+            <>
+              <Svg
+                width={width}
+                height={SCREEN_HEIGHT}
+                style={StyleSheet.absoluteFillObject}
+                pointerEvents="none"
+              >
+                <Path
+                  fillRule="evenodd"
+                  d={[
+                    `M 0 0 H ${width} V ${SCREEN_HEIGHT} H 0 Z`,
+                    `M ${sideWidth + 12} ${scanTop}`,
+                    `H ${sideWidth + scanSize - 12}`,
+                    `A 12 12 0 0 1 ${sideWidth + scanSize} ${scanTop + 12}`,
+                    `V ${scanTop + scanSize - 12}`,
+                    `A 12 12 0 0 1 ${sideWidth + scanSize - 12} ${scanTop + scanSize}`,
+                    `H ${sideWidth + 12}`,
+                    `A 12 12 0 0 1 ${sideWidth} ${scanTop + scanSize - 12}`,
+                    `V ${scanTop + 12}`,
+                    `A 12 12 0 0 1 ${sideWidth + 12} ${scanTop}`,
+                    `Z`,
+                  ].join(" ")}
+                  fill="rgba(0,0,0,0.55)"
+                />
+              </Svg>
+
+              {/* Corner brackets */}
+              {[
+                { top: scanTop,            left: sideWidth,                       tx: Animated.multiply(cornerGap, -1), ty: Animated.multiply(cornerGap, -1), borderTopLeftRadius: 22,     borderTopWidth: 6, borderLeftWidth: 6,  borderRightWidth: 0, borderBottomWidth: 0 },
+                { top: scanTop,            left: sideWidth + scanSize - 58,       tx: cornerGap,                        ty: Animated.multiply(cornerGap, -1), borderTopRightRadius: 22,    borderTopWidth: 6, borderRightWidth: 6, borderLeftWidth: 0,  borderBottomWidth: 0 },
+                { top: scanTop + scanSize - 58, left: sideWidth,                  tx: Animated.multiply(cornerGap, -1), ty: cornerGap,                        borderBottomLeftRadius: 22,  borderBottomWidth: 6, borderLeftWidth: 6,  borderTopWidth: 0, borderRightWidth: 0 },
+                { top: scanTop + scanSize - 58, left: sideWidth + scanSize - 58,  tx: cornerGap,                        ty: cornerGap,                        borderBottomRightRadius: 22, borderBottomWidth: 6, borderRightWidth: 6, borderTopWidth: 0, borderLeftWidth: 0 },
+              ].map(({ tx, ty, ...corner }, i) => (
+                <Animated.View
+                  key={i}
+                  pointerEvents="none"
+                  style={{
+                    position: "absolute",
+                    width: 58,
+                    height: 58,
+                    borderColor: WHITE,
+                    transform: [{ translateX: tx }, { translateY: ty }],
+                    ...corner,
+                  }}
+                />
+              ))}
+
+              {/* Enter code button */}
+              <TouchableOpacity
+                onPress={() => {
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  if (Platform.OS === "ios") {
+                    Alert.prompt(
+                      "Enter code",
+                      "Type the code shown in your terminal",
+                      [
+                        { text: "Cancel", style: "cancel" },
+                        { text: "Connect", onPress: (code) => { if (code?.trim()) handleConnectWithCode(code.trim()); } },
+                      ],
+                      "plain-text",
+                      "",
+                      "default"
+                    );
+                  } else {
+                    setShowCodeInput(true);
+                  }
+                }}
+                activeOpacity={0.8}
+                style={{
+                  position: "absolute",
+                  top: scanTop + scanSize + 70,
+                  left: sideWidth + 32,
+                  right: width - sideWidth - scanSize + 32,
+                  backgroundColor: WHITE,
+                  borderRadius: 999,
+                  paddingVertical: 14,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ color: BLACK, fontSize: 15, fontFamily: fonts.sans.semibold }}>Enter code</Text>
+              </TouchableOpacity>
+
+              {/* Overlays inside the scan area */}
+              <View style={{ position: "absolute", top: scanTop, left: sideWidth, width: scanSize, height: scanSize }}>
+                {permission && !permission.granted && (
+                  <View style={styles.permissionOverlay}>
+                    <View style={styles.permissionIconWrapper}>
+                      <MaterialCommunityIcons name="camera-off" size={28} color={WHITE} />
+                    </View>
+                    <Text style={styles.permissionOverlayTitle}>
+                      Camera Access Required
+                    </Text>
+                    <Text style={styles.permissionOverlayDesc}>
+                      This app uses the camera to scan a QR code to securely connect
+                      the app to your development environment or codebase.
+                    </Text>
+                  </View>
+                )}
+                {isConnecting && (
+                  <View style={styles.scanningOverlay}>
+                    <Animated.View style={{ transform: [{ rotate: loaderSpin }] }}>
+                      <LoaderCircle size={24} color={WHITE} strokeWidth={2} />
+                    </Animated.View>
+                    <Text style={styles.connectingText}>Connecting...</Text>
+                  </View>
+                )}
+              </View>
+            </>
+          );
+        })()}
+
         {/* Learn how to connect button */}
-        <View style={styles.cliHintRow}>
+        <View style={[styles.cliHintRow, { bottom: Math.max(insets.bottom + 20, 40) }]}>
           <TouchableOpacity
             style={styles.learnButton}
             onPress={() => {
@@ -325,127 +464,7 @@ const LunelConnect = () => {
             <Text style={[styles.learnButtonText, { fontSize: typography.body }]}>Learn how to connect</Text>
           </TouchableOpacity>
         </View>
-
-        {/* Scan frame */}
-        {(() => {
-          const scanSize = isTablet ? Math.min(width * 0.35, 280) : width * 0.6;
-          const scanOffset = scanSize / 2;
-          return (
-            <View style={[styles.scanFrame, { width: scanSize, height: scanSize, marginTop: -scanOffset, marginLeft: -scanOffset }]}>
-              <Animated.View
-                style={[
-                  styles.corner,
-                  styles.cornerTopLeft,
-                  { transform: [{ translateX: cornerOutNeg }, { translateY: cornerOutNeg }, { scale: cornerScale }] },
-                ]}
-              >
-                <Svg width="100%" height="100%" viewBox="0 0 50 50">
-                  <Path d="M 47 3 H 23 Q 3 3 3 23 V 47" stroke={WHITE} strokeWidth={7} strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                </Svg>
-              </Animated.View>
-              <Animated.View
-                style={[
-                  styles.corner,
-                  styles.cornerTopRight,
-                  { transform: [{ translateX: cornerOut }, { translateY: cornerOutNeg }, { scale: cornerScale }] },
-                ]}
-              >
-                <Svg width="100%" height="100%" viewBox="0 0 50 50">
-                  <Path d="M 3 3 H 27 Q 47 3 47 23 V 47" stroke={WHITE} strokeWidth={7} strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                </Svg>
-              </Animated.View>
-              <Animated.View
-                style={[
-                  styles.corner,
-                  styles.cornerBottomLeft,
-                  { transform: [{ translateX: cornerOutNeg }, { translateY: cornerOut }, { scale: cornerScale }] },
-                ]}
-              >
-                <Svg width="100%" height="100%" viewBox="0 0 50 50">
-                  <Path d="M 47 47 H 23 Q 3 47 3 27 V 3" stroke={WHITE} strokeWidth={7} strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                </Svg>
-              </Animated.View>
-              <Animated.View
-                style={[
-                  styles.corner,
-                  styles.cornerBottomRight,
-                  { transform: [{ translateX: cornerOut }, { translateY: cornerOut }, { scale: cornerScale }] },
-                ]}
-              >
-                <Svg width="100%" height="100%" viewBox="0 0 50 50">
-                  <Path d="M 3 47 H 27 Q 47 47 47 27 V 3" stroke={WHITE} strokeWidth={7} strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                </Svg>
-              </Animated.View>
-
-              {!permission.granted && (
-                <View style={styles.permissionOverlay}>
-                  <View style={styles.permissionIconWrapper}>
-                    <AlertCircle size={28} color={WHITE} strokeWidth={1.5} />
-                  </View>
-                  <Text style={styles.permissionOverlayTitle}>
-                    Camera Access Required
-                  </Text>
-                  <Text style={styles.permissionOverlayDesc}>
-                    This app uses the camera to scan a QR code to securely connect
-                    the app to your development environment or codebase. You can
-                    also manually enter the code if you prefer not to use the
-                    camera.
-                  </Text>
-                </View>
-              )}
-
-              {isConnecting && (
-                <View style={styles.scanningOverlay}>
-                  <Animated.View style={{ transform: [{ rotate: loaderSpin }] }}>
-                    <LoaderCircle size={24} color={WHITE} strokeWidth={2} />
-                  </Animated.View>
-                  <Text style={styles.connectingText}>Connecting...</Text>
-                </View>
-              )}
-            </View>
-          );
-        })()}
       </View>
-
-      {/* Lower */}
-      <ReAnimated.View style={[styles.lower, lowerAnimatedStyle, { backgroundColor: BLACK }]}>
-        <View style={styles.inputRow}>
-          <View style={styles.inputWrapper}>
-            <QrCode size={18} color={BLACK} strokeWidth={2} />
-            <TextInput
-              style={[styles.input, { fontFamily: fonts.sans.regular }]}
-              placeholder="Enter connection code"
-              placeholderTextColor="rgba(0,0,0,0.9)"
-              value={manualCode}
-              onChangeText={(text) => { setManualCode(text); setError(null); }}
-              autoCapitalize="none"
-              autoCorrect={false}
-              editable={!isConnecting}
-              onFocus={() => setIsFocused(true)}
-              onBlur={() => setIsFocused(false)}
-              returnKeyType="go"
-              onSubmitEditing={handleConnect}
-            />
-          </View>
-          <TouchableOpacity
-            onPress={handleConnect}
-            style={[styles.arrowButton, {
-              backgroundColor: manualCode.trim() ? "#4F46E5" : "rgba(255,255,255,0.15)",
-              borderColor: manualCode.trim() ? "#4F46E5" : "transparent",
-            }]}
-            disabled={isButtonDisabled}
-            activeOpacity={0.75}
-          >
-            {isConnecting ? (
-              <Animated.View style={{ transform: [{ rotate: loaderSpin }] }}>
-                <LoaderCircle size={18} color={manualCode.trim() ? WHITE : "#aaaaaa"} strokeWidth={2} />
-              </Animated.View>
-            ) : (
-              <Text style={{ fontFamily: fonts.sans.semibold, fontSize: 14, color: manualCode.trim() ? WHITE : "#aaaaaa" }}>Connect</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </ReAnimated.View>
 
       <Toast
         visible={toastVisible}
@@ -566,6 +585,62 @@ const LunelConnect = () => {
             </ScrollView>
         </>)}
       </SwipeableSheet>
+
+      {/* Enter code sheet */}
+      <SwipeableSheet visible={showCodeInput} onClose={() => setShowCodeInput(false)} styles={styles} fonts={fonts} typography={typography}>
+        {(animatedClose) => (
+          <>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={[styles.modalTitle, { fontFamily: fonts.sans.semibold }]}>Enter code</Text>
+                <Text style={[styles.modalSubtitle, { fontSize: 12, fontFamily: fonts.sans.regular }]}>Type the code shown in your terminal</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); animatedClose(); }}
+                style={styles.modalClose}
+              >
+                <X size={18} color={WHITE} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+            <View style={{ gap: 12, paddingBottom: insets.bottom + 24 }}>
+              <View style={[styles.inputWrapper, { backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 14 }]}>
+                <QrCode size={18} color={WHITE} strokeWidth={2} />
+                <TextInput
+                  style={[styles.input, { fontFamily: fonts.sans.regular, color: WHITE }]}
+                  placeholder="e.g. abc-123-xyz"
+                  placeholderTextColor="rgba(255,255,255,0.35)"
+                  value={manualCode}
+                  onChangeText={(text) => { setManualCode(text); setError(null); }}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={!isConnecting}
+                  returnKeyType="go"
+                  onSubmitEditing={() => { handleConnect(); animatedClose(); }}
+                />
+              </View>
+              <TouchableOpacity
+                onPress={() => { handleConnect(); animatedClose(); }}
+                disabled={!manualCode.trim() || isConnecting}
+                activeOpacity={0.8}
+                style={{
+                  backgroundColor: manualCode.trim() ? WHITE : "rgba(255,255,255,0.12)",
+                  borderRadius: 14,
+                  paddingVertical: 14,
+                  alignItems: "center",
+                }}
+              >
+                {isConnecting ? (
+                  <Animated.View style={{ transform: [{ rotate: loaderSpin }] }}>
+                    <LoaderCircle size={18} color={manualCode.trim() ? BLACK : "rgba(255,255,255,0.4)"} strokeWidth={2} />
+                  </Animated.View>
+                ) : (
+                  <Text style={{ color: manualCode.trim() ? BLACK : "rgba(255,255,255,0.4)", fontSize: 15, fontFamily: fonts.sans.semibold }}>Connect</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+      </SwipeableSheet>
     </View>
     </TouchableWithoutFeedback>
   );
@@ -578,11 +653,6 @@ const styles = StyleSheet.create({
   },
   upper: {
     flex: 1,
-    overflow: "hidden",
-    borderRadius: 30,
-    marginHorizontal: 4,
-    marginTop: 4,
-    marginBottom: 80,
   },
   lower: {
     position: "absolute",
@@ -658,8 +728,8 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     paddingHorizontal: 14,
     backgroundColor: "rgba(0,0,0,0.45)",
-    borderRadius: 14,
-    borderWidth: 1,
+    borderRadius: 999,
+    borderWidth: 0.5,
     borderColor: "rgba(255,255,255,0.18)",
   },
   learnButtonText: {
@@ -697,7 +767,7 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "700",
     color: WHITE,
   },

@@ -784,7 +784,7 @@ export default function OnboardingScreen() {
   ).current;
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg.base }}>
+    <View style={{ flex: 1, backgroundColor: colors.bg.base, paddingTop: insets.top }}>
 
       <FlatList
         ref={flatListRef}

@@ -133,7 +133,6 @@ function RootLayoutContent() {
   const isSettings = pathname.startsWith("/settings");
   const isHelp = pathname.startsWith("/help");
   const isFeedback = pathname.startsWith("/feedback");
-  const useEdgeToEdgeTopInset = isWorkspace || isSettings || isHelp || isFeedback || isOnboarding;
   const isAuth = pathname.startsWith("/auth");
   const isLunelConnect = pathname.startsWith("/lunel-connect");
   const isOnboarding = pathname.startsWith("/onboarding");
@@ -264,13 +263,13 @@ function RootLayoutContent() {
     <SafeAreaProvider>
       <KeyboardProvider>
       <SafeAreaView
-        style={{ flex: 1, backgroundColor: useEdgeToEdgeTopInset ? "transparent" : statusBarBg }}
-        edges={useEdgeToEdgeTopInset ? [] : undefined}
+        style={{ flex: 1, backgroundColor: "transparent" }}
+        edges={[]}
       >
         <StatusBar
           style={statusBarStyle}
-          backgroundColor={useEdgeToEdgeTopInset ? "transparent" : statusBarBg}
-          translucent={useEdgeToEdgeTopInset}
+          backgroundColor="transparent"
+          translucent={true}
         />
         <Stack
           screenOptions={{
@@ -305,8 +304,9 @@ function RootLayoutContent() {
           <Stack.Screen
             name="lunel-connect"
             options={{
-              animation: "slide_from_right",
-              gestureEnabled: true,
+              animation: "none",
+              gestureEnabled: false,
+              contentStyle: { backgroundColor: "black" },
             }}
           />
         </Stack>
