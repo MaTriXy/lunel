@@ -6,6 +6,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { usePlugins } from "@/plugins/context";
 import { DrawerContentComponentProps, useDrawerStatus } from "@react-navigation/drawer";
 import * as Haptics from "expo-haptics";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { useRouter } from "expo-router";
 import {
   ChevronDown,
@@ -297,7 +298,8 @@ export default function DrawerContent(props: DrawerContentComponentProps) {
                   </Text>
                 </View>
               ) : filteredSessions.length === 0 ? (
-                <View style={styles.emptyState}>
+                <View style={[styles.emptyState, { paddingTop: 50 }]}>
+                  <Ionicons name="chatbox-ellipses" size={26} color={colors.fg.muted} />
                   <Text style={[styles.emptyText, { color: colors.fg.subtle, fontFamily: fonts.sans.regular }]}>
                     No sessions yet
                   </Text>

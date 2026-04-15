@@ -1,7 +1,8 @@
 import PluginHeader, { BaseTab, usePluginHeaderHeight } from "@/components/PluginHeader";
+import InfoSheet from "@/components/InfoSheet";
 import Loading from "@/components/Loading";
 import { LinearGradient } from "expo-linear-gradient";
-import { Codex, OpenCode } from "@lobehub/icons-rn";
+import { Codex, OpenCode, ClaudeCode } from "@lobehub/icons-rn";
 import { useAppSettings } from "@/contexts/AppSettingsContext";
 import { useSessionRegistryActions } from "@/contexts/SessionRegistry";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -1362,149 +1363,6 @@ function ApiKeySetup({ providers, colors, radius, fonts, onSetKey }: {
 // ============================================================================
 // Backend Picker Sheet
 // ============================================================================
-
-function BackendPickerDialog({
-  visible,
-  onPick,
-  onClose,
-  colors,
-  radius,
-  fonts,
-}: {
-  visible: boolean;
-  onPick: (backend: "opencode" | "codex") => void;
-  onClose: () => void;
-  colors: any;
-  radius: any;
-  fonts: any;
-}) {
-  const [modalVisible, setModalVisible] = useState(false);
-  const backdropOpacity = useSharedValue(0);
-  const sheetTranslateY = useSharedValue(SCREEN_HEIGHT);
-
-  const hideModal = useCallback(() => setModalVisible(false), []);
-
-  useEffect(() => {
-    if (visible) {
-      setModalVisible(true);
-      backdropOpacity.value = 0;
-      sheetTranslateY.value = SCREEN_HEIGHT;
-      backdropOpacity.value = withTiming(1, {
-        duration: 220,
-        easing: Easing.out(Easing.cubic),
-      });
-      sheetTranslateY.value = withTiming(0, {
-        duration: 260,
-        easing: Easing.out(Easing.cubic),
-      });
-    } else {
-      backdropOpacity.value = withTiming(0, {
-        duration: 200,
-        easing: Easing.out(Easing.cubic),
-      });
-      sheetTranslateY.value = withTiming(
-        SCREEN_HEIGHT,
-        {
-          duration: 240,
-          easing: Easing.out(Easing.cubic),
-        },
-        (finished) => {
-          if (finished) runOnJS(hideModal)();
-        }
-      );
-    }
-  }, [visible, backdropOpacity, sheetTranslateY, hideModal]);
-
-  const backdropAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: backdropOpacity.value,
-  }));
-  const sheetAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: sheetTranslateY.value }],
-  }));
-
-  if (!modalVisible) return null;
-
-  const options: Array<{
-    backend?: "opencode" | "codex";
-    label: string;
-    description: string;
-    disabled?: boolean;
-  }> = [
-    { backend: "codex", label: "Codex", description: "OpenAI Codex CLI" },
-    { backend: "opencode", label: "OpenCode", description: "The open source AI coding agent" },
-    { label: "Claude Code", description: "Coming soon", disabled: true },
-  ];
-  const text = {
-    header: "New Session",
-  };
-
-  return (
-    <Modal transparent animationType="none" visible onRequestClose={onClose}>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <View style={{ flex: 1 }}>
-          <Animated.View style={[styles.sheetBackdrop, backdropAnimatedStyle]} pointerEvents="box-none">
-            <Pressable style={{ flex: 1 }} onPress={onClose} />
-          </Animated.View>
-          <Animated.View
-            style={[
-              styles.sheetContainer,
-              {
-                backgroundColor: colors.bg.raised,
-                borderTopLeftRadius: 20,
-                borderTopRightRadius: 20,
-                height: "36%",
-              },
-              sheetAnimatedStyle,
-            ]}
-          >
-            <View style={styles.sheetHeader}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.fg.default, fontSize: 18, fontFamily: fonts.sans.semibold }}>
-                  {text.header}
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => {
-                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  onClose();
-                }}
-                activeOpacity={0.7}
-                style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.bg.base, alignItems: "center", justifyContent: "center" }}
-              >
-                <X size={18} color={colors.fg.default} strokeWidth={2} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={{ flex: 1, marginBottom: 20 }} contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 18, gap: 6 }} keyboardDismissMode="on-drag">
-              {options.map(({ backend, label, description, disabled }) => (
-                <TouchableOpacity
-                  key={backend ?? label}
-                  onPress={() => {
-                    if (!disabled && backend) onPick(backend);
-                  }}
-                  activeOpacity={0.75}
-                  disabled={disabled}
-                  style={[styles.backendOption, {
-                    backgroundColor: disabled ? colors.bg.base : colors.bg.raised,
-                    borderRadius: 10,
-                    opacity: disabled ? 0.55 : 1,
-                  }]}
-                >
-                  <Text style={{ color: colors.fg.default, fontSize: 14, fontFamily: fonts.sans.medium }}>
-                    {label}
-                  </Text>
-                  <Text style={{ color: colors.fg.muted, fontSize: 12, fontFamily: fonts.sans.regular, marginTop: 1 }}>
-                    {description}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </Animated.View>
-        </View>
-      </GestureHandlerRootView>
-    </Modal>
-  );
-}
 
 // ============================================================================
 // Bottom Sheet Picker
@@ -3364,14 +3222,46 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
       )}
 
       {/* Backend Picker */}
-      <BackendPickerDialog
+      <InfoSheet
         visible={backendPickerVisible}
-        onPick={createNewTabWithBackend}
         onClose={() => setBackendPickerVisible(false)}
-        colors={colors}
-        radius={radius}
-        fonts={fonts}
-      />
+        title="New Session"
+        description="Choose an AI backend to start a new session"
+      >
+        <View style={{ gap: 6, paddingBottom: 80 }}>
+          {[
+            { backend: "codex" as const, label: "Codex", description: "OpenAI Codex CLI", Icon: Codex },
+            { backend: "opencode" as const, label: "OpenCode", description: "The open source AI coding agent", Icon: OpenCode },
+            { label: "Claude Code", description: "Coming soon", disabled: true, Icon: ClaudeCode },
+          ].map(({ backend, label, description, disabled, Icon }) => (
+            <TouchableOpacity
+              key={backend ?? label}
+              onPress={() => {
+                if (!disabled && backend) void createNewTabWithBackend(backend);
+              }}
+              activeOpacity={disabled ? 1 : 0.75}
+              style={[styles.backendOption, {
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 12,
+                backgroundColor: disabled ? colors.bg.base : "transparent",
+                borderRadius: 10,
+                opacity: disabled ? 0.55 : 1,
+              }]}
+            >
+              <Icon size={26} color={colors.fg.default} />
+              <View>
+                <Text style={{ color: colors.fg.default, fontSize: 14, fontFamily: fonts.sans.medium }}>
+                  {label}
+                </Text>
+                <Text style={{ color: colors.fg.muted, fontSize: 12, fontFamily: fonts.sans.regular, marginTop: 1 }}>
+                  {description}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </InfoSheet>
 
       {/* Header */}
       <PluginHeader

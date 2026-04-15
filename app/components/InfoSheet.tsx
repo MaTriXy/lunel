@@ -37,11 +37,11 @@ export default function InfoSheet({ visible, onClose, title, description, childr
     if (visible) {
       setModalVisible(true);
       translateY.value = SCREEN_HEIGHT;
-      translateY.value = withTiming(0, { duration: 320 });
-      backdropOpacity.value = withTiming(1, { duration: 280 });
+      translateY.value = withTiming(0, { duration: 200 });
+      backdropOpacity.value = withTiming(1, { duration: 200 });
     } else {
-      backdropOpacity.value = withTiming(0, { duration: 250 });
-      translateY.value = withTiming(SCREEN_HEIGHT, { duration: 300 }, () => {
+      backdropOpacity.value = withTiming(0, { duration: 200 });
+      translateY.value = withTiming(SCREEN_HEIGHT, { duration: 200 }, () => {
         runOnJS(hideModal)();
       });
     }
@@ -140,7 +140,7 @@ const sheetStyles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    marginBottom: 32,
+    marginBottom: 20,
   },
   title: {
     fontSize: 18,
