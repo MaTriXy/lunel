@@ -1764,6 +1764,7 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
     async () => {}
   );
   const codexFinalSyncInFlightRef = useRef<Set<string>>(new Set());
+  const deletedSessionKeysRef = useRef<Set<string>>(new Set());
   const clearScheduledScroll = useCallback(() => {
     if (scrollFrameRef.current != null) {
       cancelAnimationFrame(scrollFrameRef.current);
@@ -1903,6 +1904,10 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
           const info = (props.info || props) as Record<string, unknown>;
           const backend = (event.backend ?? "opencode") as AiBackend;
           const sessId = info.id as string;
+          const deletedKey = `${backend}:${sessId}`;
+          if (sessId && deletedSessionKeysRef.current.has(deletedKey)) {
+            break;
+          }
           const title = info.title as string;
           const updatedAt = (info.time as Record<string, unknown> | undefined)?.updated as number | undefined;
           if (sessId) {
@@ -1930,6 +1935,32 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
               }]);
             });
           }
+          break;
+        }
+        case "session.deleted": {
+          const info = (props.info || props) as Record<string, unknown>;
+          const backend = (event.backend ?? "opencode") as AiBackend;
+          const sessId = (info.id as string) || (props.sessionID as string) || (props.sessionId as string);
+          if (!sessId) break;
+          deletedSessionKeysRef.current.add(`${backend}:${sessId}`);
+          setSessionTabs((prev) => prev.filter((t) => !(t.sessionId === sessId && t.backend === backend)));
+          setMessagesMap((prev) => {
+            const next = { ...prev };
+            delete next[sessId];
+            return next;
+          });
+          setErrorMessages((prev) => {
+            const next = { ...prev };
+            delete next[sessId];
+            return next;
+          });
+          setSessionActivityLabels((prev) => {
+            const next = { ...prev };
+            delete next[sessId];
+            return next;
+          });
+          setActiveTabId((prev) => (prev === sessId ? null : prev));
+          setStreamingSessionId((prev) => (prev === sessId ? null : prev));
           break;
         }
         case "session.status": {
@@ -2187,7 +2218,12 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
       try {
         const sessions = await ai.listSessions();
         if (cancelled || !Array.isArray(sessions)) return;
-        setSessionTabs((prev) => mergeSessionTabs(prev, sessions as AISession[]));
+        const nextTabs = mergeSessionTabs([], sessions as AISession[]);
+        setSessionTabs(nextTabs);
+        setActiveTabId((prev) => {
+          if (!prev) return prev;
+          return nextTabs.some((t) => t.id === prev) ? prev : (nextTabs[nextTabs.length - 1]?.id ?? null);
+        });
       } catch {
         // best effort refresh
       }
@@ -2377,8 +2413,21 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
         if (Array.isArray(msgs)) {
           setMessagesMap((prev) => ({ ...prev, [tab.sessionId!]: msgs as AIMessage[] }));
         }
-      } catch {
-        // ok
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err ?? "");
+        if (/session not found/i.test(message) || /NotFoundError/i.test(message)) {
+          setSessionTabs((prev) => prev.filter((t) => !(t.sessionId === tab.sessionId && t.backend === tab.backend)));
+          setMessagesMap((prev) => {
+            const next = { ...prev };
+            delete next[tab.sessionId!];
+            return next;
+          });
+          setErrorMessages((prev) => {
+            const next = { ...prev };
+            delete next[tab.sessionId!];
+            return next;
+          });
+        }
       } finally {
         setLoadingSessionId((prev) => (prev === tab.sessionId ? null : prev));
       }
@@ -3190,7 +3239,7 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
           <Loading color={colors.fg.muted} />
         ) : isInitialSessionsLoading && tabs.length === 0 ? (
           <Loading color={colors.fg.muted} />
-        ) : tabs.length === 0 ? (
+        ) : tabs.length === 0 && !pendingBackend ? (
           <View
             style={{
               flex: 1,

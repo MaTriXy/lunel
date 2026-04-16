@@ -143,7 +143,16 @@ export class OpenCodeProvider implements AIProvider {
 
   async deleteSession(id: string): Promise<{ deleted: boolean }> {
     const response = await this.client!.session.delete({ path: { id } });
-    return { deleted: Boolean(requireData(response, "session.delete")) };
+    const raw = response as { data?: unknown; error?: unknown };
+    if (raw.error) {
+      const errMsg = typeof raw.error === "string"
+        ? raw.error
+        : JSON.stringify(raw.error);
+      throw new Error(errMsg);
+    }
+    // Treat any non-error delete response as success. Some SDK/runtime combos
+    // return inconsistent boolean payloads despite successful deletion.
+    return { deleted: true };
   }
 
   // -------------------------------------------------------------------------
