@@ -140,11 +140,22 @@ function mergeSessionTabs(existingTabs: AITab[], incomingSessions: AISession[]):
       sessionId: session.id,
       backend,
       title: nextTitle,
-      updatedAt: typeof nextUpdatedAt === "number" ? nextUpdatedAt : existing?.updatedAt,
+      // Keep local ordering stable for existing tabs. We only move a tab when
+      // the user sends a new prompt from that tab.
+      updatedAt: existing?.updatedAt
+        ?? (typeof nextUpdatedAt === "number" ? nextUpdatedAt : Date.now()),
     });
   }
 
   return sortTabsByUpdatedAt(Array.from(byKey.values()));
+}
+
+function reconcileSessionTabs(existingTabs: AITab[], incomingSessions: AISession[]): AITab[] {
+  const incomingKeys = new Set(
+    incomingSessions.map((session) => `${session.backend ?? "opencode"}:${session.id}`),
+  );
+  const merged = mergeSessionTabs(existingTabs, incomingSessions);
+  return merged.filter((tab) => !!tab.sessionId && incomingKeys.has(`${tab.backend}:${tab.sessionId}`));
 }
 
 function sameMessagesShape(a: AIMessage[] | undefined, b: AIMessage[]): boolean {
@@ -1922,7 +1933,6 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
                 updated[existingIndex] = {
                   ...updated[existingIndex],
                   title: title || updated[existingIndex].title,
-                  updatedAt: typeof updatedAt === "number" ? updatedAt : updated[existingIndex].updatedAt,
                 };
                 updated.sort((a, b) => (a.updatedAt ?? 0) - (b.updatedAt ?? 0));
                 return updated;
@@ -2246,11 +2256,15 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
       try {
         const sessions = await ai.listSessions();
         if (cancelled || !Array.isArray(sessions)) return;
-        const nextTabs = mergeSessionTabs([], sessions as AISession[]);
-        setSessionTabs(nextTabs);
-        setActiveTabId((prev) => {
-          if (!prev) return prev;
-          return nextTabs.some((t) => t.id === prev) ? prev : (nextTabs[nextTabs.length - 1]?.id ?? null);
+        setSessionTabs((prev) => {
+          const nextTabs = reconcileSessionTabs(prev, sessions as AISession[]);
+          setActiveTabId((prevActive) => {
+            if (!prevActive) return prevActive;
+            return nextTabs.some((t) => t.id === prevActive)
+              ? prevActive
+              : (nextTabs[nextTabs.length - 1]?.id ?? null);
+          });
+          return nextTabs;
         });
       } catch {
         // best effort refresh
@@ -2378,6 +2392,14 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
 
   // Tab management
   const getTabWidth = useCallback(() => 120, []);
+  const markSessionAsUserActive = useCallback((sessionId: string, backend: AiBackend) => {
+    const now = Date.now();
+    setSessionTabs((prev) => prev.map((tab) => (
+      tab.sessionId === sessionId && tab.backend === backend
+        ? { ...tab, updatedAt: now }
+        : tab
+    )));
+  }, []);
 
   const createNewTab = () => {
     setBackendPickerVisible(true);
@@ -2751,6 +2773,7 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
     if (text.startsWith("/") && !pendingImage) {
       const ensured = await ensureSession();
       if (!ensured) return;
+      markSessionAsUserActive(ensured, messageBackend);
       const cmd = text.slice(1).split(" ")[0].toLowerCase();
       try {
         switch (cmd) {
@@ -2854,6 +2877,7 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
         }));
         return;
       }
+      markSessionAsUserActive(ensured, messageBackend);
 
       await ai.sendPrompt(
         ensured,
