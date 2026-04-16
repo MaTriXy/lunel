@@ -169,7 +169,18 @@ export default function DrawerContent(props: DrawerContentComponentProps) {
   };
 
   const handleSessionClose = (id: string) => {
-    reg?.onSessionClose(id);
+    Alert.alert(
+      "Delete Session",
+      "Are you sure you want to delete this session?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => reg?.onSessionClose(id),
+        },
+      ],
+    );
   };
 
   const handleSessionRenameStart = (id: string, currentTitle: string) => {
@@ -360,16 +371,18 @@ export default function DrawerContent(props: DrawerContentComponentProps) {
                                         onPress={() => handleSessionRenameStart(item.id, item.title)}
                                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                                         activeOpacity={0.6}
+                                        style={{ opacity: 0.7 }}
                                       >
-                                        <SquarePen size={18} color={colors.fg.muted} strokeWidth={2} />
+                                        <SquarePen size={17} color={colors.fg.muted} strokeWidth={2} />
                                       </TouchableOpacity>
                                     ) : null}
                                     <TouchableOpacity
                                       onPress={() => handleSessionClose(item.id)}
                                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                                       activeOpacity={0.6}
+                                      style={{ opacity: 0.7 }}
                                     >
-                                      <Trash size={18} color={colors.fg.muted} strokeWidth={2} />
+                                      <Trash size={17} color="#ef4444" strokeWidth={2} />
                                     </TouchableOpacity>
                                   </View>
                                 </TouchableOpacity>
