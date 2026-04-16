@@ -16,7 +16,7 @@ import {
   Activity,
   HardDrive,
 } from 'lucide-react-native';
-import PluginHeader, { usePluginHeaderHeight } from '@/components/PluginHeader';
+import Header, { useHeaderHeight } from "@/components/Header";
 import NotConnected from '@/components/NotConnected';
 import Loading from '@/components/Loading';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -147,7 +147,7 @@ function UsageStream({
 
 function MonitorPanel({ instanceId, isActive }: PluginPanelProps) {
   const { colors, fonts, spacing, radius } = useTheme();
-  const headerHeight = usePluginHeaderHeight();
+  const headerHeight = useHeaderHeight();
   const { monitor: monitorApi, isConnected } = useApi();
 
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
@@ -199,8 +199,8 @@ function MonitorPanel({ instanceId, isActive }: PluginPanelProps) {
   // Not connected
   if (!isConnected) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.terminal.bg, paddingTop: headerHeight }}>
-        <PluginHeader title="Monitor" colors={colors} />
+      <View style={{ flex: 1, backgroundColor: colors.terminal.bg }}>
+        <Header title="Monitor" colors={colors} />
         <NotConnected colors={colors} fonts={fonts} />
       </View>
     );
@@ -299,8 +299,8 @@ function MonitorPanel({ instanceId, isActive }: PluginPanelProps) {
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.terminal.bg, paddingTop: headerHeight }}>
-      <PluginHeader title="Monitor" colors={colors} />
+    <View style={{ flex: 1, backgroundColor: colors.terminal.bg }}>
+      <Header title="Monitor" colors={colors} />
 
       {error && (
         <View style={{

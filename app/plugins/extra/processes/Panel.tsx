@@ -22,7 +22,7 @@ import {
   Trash,
   RouteOff,
 } from 'lucide-react-native';
-import PluginHeader, { usePluginHeaderHeight } from '@/components/PluginHeader';
+import Header, { useHeaderHeight } from "@/components/Header";
 import NotConnected from '@/components/NotConnected';
 import Loading from '@/components/Loading';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -34,7 +34,7 @@ function ProcessesPanel({ instanceId, isActive }: PluginPanelProps) {
   const { colors, fonts, spacing, radius, typography } = useTheme();
   const { width } = useWindowDimensions();
   const isIPad = Platform.OS === 'ios' && Platform.isPad || width >= 768;
-  const headerHeight = usePluginHeaderHeight();
+  const headerHeight = useHeaderHeight();
   const { processes: processApi, isConnected } = useApi();
 
   const [processList, setProcessList] = useState<ProcessInfo[]>([]);
@@ -195,8 +195,8 @@ function ProcessesPanel({ instanceId, isActive }: PluginPanelProps) {
   // Not connected view
   if (!isConnected) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.bg.base, paddingTop: headerHeight }}>
-        <PluginHeader title="Processes" colors={colors} />
+      <View style={{ flex: 1, backgroundColor: colors.bg.base }}>
+        <Header title="Processes" colors={colors} />
         <NotConnected colors={colors} fonts={fonts} />
       </View>
     );
@@ -204,8 +204,8 @@ function ProcessesPanel({ instanceId, isActive }: PluginPanelProps) {
 
   if (selectedProcess) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.bg.base, paddingTop: headerHeight }}>
-        <PluginHeader
+      <View style={{ flex: 1, backgroundColor: colors.bg.base }}>
+        <Header
           title={selectedProcess.command.length > 18 ? selectedProcess.command.slice(0, 18) + '…' : selectedProcess.command}
           colors={colors}
           onBack={() => setSelectedProcess(null)}
@@ -308,8 +308,8 @@ function ProcessesPanel({ instanceId, isActive }: PluginPanelProps) {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg.base, paddingTop: headerHeight, position: 'relative' }}>
-      <PluginHeader
+    <View style={{ flex: 1, backgroundColor: colors.bg.base, position: 'relative' }}>
+      <Header
         title="Processes"
         colors={colors}
         rightAccessory={

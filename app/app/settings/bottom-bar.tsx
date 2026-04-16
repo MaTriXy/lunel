@@ -13,7 +13,7 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/contexts/ThemeContext';
-import PluginHeader, { usePluginHeaderHeight } from '@/components/PluginHeader';
+import Header, { useHeaderHeight } from "@/components/Header";
 import { usePlugins, CORE_PLUGIN_IDS } from '@/plugins';
 import { Lock, Plus, Grid3x3, X, CheckCircle2 } from 'lucide-react-native';
 import { PluginDefinition } from '@/plugins/types';
@@ -23,7 +23,7 @@ type SlotTarget = { type: 'row1' } | { type: 'row2'; index: number };
 export default function BottomBarSettings() {
   const { colors, fonts, spacing, radius } = useTheme();
   const router = useRouter();
-  const headerHeight = usePluginHeaderHeight();
+  const headerHeight = useHeaderHeight();
   const {
     extraPlugins,
     getPlugin,
@@ -491,8 +491,8 @@ export default function BottomBarSettings() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg.base, paddingTop: headerHeight }}>
-      <PluginHeader title="Bottom Bar" colors={colors} onBack={() => router.back()} />
+    <View style={{ flex: 1, backgroundColor: colors.bg.base }}>
+      <Header title="Bottom Bar" colors={colors} onBack={() => router.back()} />
 
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} keyboardDismissMode="on-drag">
         {/* Live Preview */}

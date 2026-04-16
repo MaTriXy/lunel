@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-export function usePluginHeaderHeight() {
+export function useHeaderHeight() {
   const { top: topInset } = useSafeAreaInsets();
   return topInset + 44;
 }
@@ -33,7 +33,7 @@ export interface BaseTab {
   title: string;
 }
 
-interface PluginHeaderProps<T extends BaseTab> {
+interface HeaderProps<T extends BaseTab> {
   // Optional title for simple headers (without tabs)
   title?: string;
   leftAccessory?: React.ReactNode;
@@ -76,7 +76,7 @@ const defaultGetTabWidth = (count: number): number => {
   return 120;
 };
 
-function PluginHeader<T extends BaseTab>({
+function Header<T extends BaseTab>({
   title,
   leftAccessory,
   rightAccessory,
@@ -91,7 +91,7 @@ function PluginHeader<T extends BaseTab>({
   colors,
   showBottomBorder = true,
   getTabWidth = defaultGetTabWidth,
-}: PluginHeaderProps<T>) {
+}: HeaderProps<T>) {
   const navigation = useNavigation();
   const { top: topInset } = useSafeAreaInsets();
   const openDrawer = () => navigation.dispatch(DrawerActions.openDrawer());
@@ -196,79 +196,87 @@ function PluginHeader<T extends BaseTab>({
     { height: headerHeight, paddingTop: topInset, paddingBottom: 10 },
   ];
 
+  const spacer = <View style={{ height: headerHeight }} />;
+
   // Simple header (no tabs)
   if (!tabs || tabs.length === 0) {
     return (
-      <View style={headerStyle} pointerEvents="box-none">
-        <View style={headerBarStyle}>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <TouchableOpacity onPress={handlePrimaryHeaderPress} style={styles.menuButton}>
-              {onBack ? <ChevronLeft size={22} color={colors.fg.default} strokeWidth={2} /> : <HamburgerIcon color={colors.fg.default} />}
-            </TouchableOpacity>
-            {leftAccessory}
-            {title && (
-              <Text style={[styles.title, { color: colors.fg.default }]} numberOfLines={1} ellipsizeMode="tail">
-                {title.length > 20 ? title.slice(0, 20) + "…" : title}
-              </Text>
-            )}
-            {rightAccessory ? (
-              <View style={[styles.rightAccessory, { width: rightAccessoryWidth, height: 45, alignItems: "center", justifyContent: "center" }]}>
-                {rightAccessory}
-              </View>
-            ) : null}
+      <>
+        {spacer}
+        <View style={headerStyle} pointerEvents="box-none">
+          <View style={headerBarStyle}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <TouchableOpacity onPress={handlePrimaryHeaderPress} style={styles.menuButton}>
+                {onBack ? <ChevronLeft size={22} color={colors.fg.default} strokeWidth={2} /> : <HamburgerIcon color={colors.fg.default} />}
+              </TouchableOpacity>
+              {leftAccessory}
+              {title && (
+                <Text style={[styles.title, { color: colors.fg.default }]} numberOfLines={1} ellipsizeMode="tail">
+                  {title.length > 20 ? title.slice(0, 20) + "…" : title}
+                </Text>
+              )}
+              {rightAccessory ? (
+                <View style={[styles.rightAccessory, { width: rightAccessoryWidth, height: 45, alignItems: "center", justifyContent: "center" }]}>
+                  {rightAccessory}
+                </View>
+              ) : null}
+            </View>
           </View>
         </View>
-      </View>
+      </>
     );
   }
 
   // Tab-based header
   return (
-    <View style={headerStyle} pointerEvents="box-none">
-      <View style={headerBarStyle}>
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <TouchableOpacity onPress={openDrawerWithHaptic} style={styles.menuButton}>
-            <HamburgerIcon color={colors.fg.default} />
-          </TouchableOpacity>
-          {leftAccessory}
+    <>
+      {spacer}
+      <View style={headerStyle} pointerEvents="box-none">
+        <View style={headerBarStyle}>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <TouchableOpacity onPress={openDrawerWithHaptic} style={styles.menuButton}>
+              <HamburgerIcon color={colors.fg.default} />
+            </TouchableOpacity>
+            {leftAccessory}
 
-          <View style={styles.tabsContainer}>
-            <FlatList
-              ref={tabsListRef}
-              data={tabs}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.scrollContent}
-              keyExtractor={(item) => item.id}
-              renderItem={renderTabItem}
-              getItemLayout={(_, index) => ({
-                length: tabWidth + 2,
-                offset: (tabWidth + 2) * index,
-                index,
-              })}
-              onScroll={(e) => {
-                scrollOffset.current = e.nativeEvent.contentOffset.x;
-              }}
-              scrollEventThrottle={16}
-            />
-
-            {onNewTab && (
-              <TouchableOpacity
-                onPress={() => {
-                  triggerLightHaptic();
-                  onNewTab?.();
+            <View style={styles.tabsContainer}>
+              <FlatList
+                ref={tabsListRef}
+                data={tabs}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.scrollContent}
+                keyExtractor={(item) => item.id}
+                renderItem={renderTabItem}
+                getItemLayout={(_, index) => ({
+                  length: tabWidth + 2,
+                  offset: (tabWidth + 2) * index,
+                  index,
+                })}
+                onScroll={(e) => {
+                  scrollOffset.current = e.nativeEvent.contentOffset.x;
                 }}
-                style={styles.newTabButton}
-                activeOpacity={0.7}
-              >
-                <Plus size={22} color={colors.fg.muted} strokeWidth={2} />
-              </TouchableOpacity>
-            )}
+                scrollEventThrottle={16}
+              />
+
+              {onNewTab && (
+                <TouchableOpacity
+                  onPress={() => {
+                    triggerLightHaptic();
+                    onNewTab?.();
+                  }}
+                  style={styles.newTabButton}
+                  activeOpacity={0.7}
+                >
+                  <Plus size={22} color={colors.fg.muted} strokeWidth={2} />
+                </TouchableOpacity>
+              )}
+            </View>
+            {rightAccessory ? <View style={styles.rightAccessory}>{rightAccessory}</View> : null}
           </View>
-          {rightAccessory ? <View style={styles.rightAccessory}>{rightAccessory}</View> : null}
         </View>
       </View>
-    </View>
+    </>
   );
 }
 
@@ -321,4 +329,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default memo(PluginHeader) as typeof PluginHeader;
+export default memo(Header) as typeof Header;

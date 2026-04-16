@@ -1,5 +1,5 @@
 import { useTheme } from "@/contexts/ThemeContext";
-import PluginHeader, { usePluginHeaderHeight } from "@/components/PluginHeader";
+import Header, { useHeaderHeight } from "@/components/Header";
 import {
   DisplayFamilyId,
   displayFamilies,
@@ -84,14 +84,14 @@ export default function DisplayFontPage() {
     setDisplayFont,
   } = useTheme();
   const router = useRouter();
-  const headerHeight = usePluginHeaderHeight();
+  const headerHeight = useHeaderHeight();
 
   const displayFontIds = Object.keys(displayFamilies) as DisplayFamilyId[];
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.bg.base, paddingTop: headerHeight }]}>
+    <View style={[styles.container, { backgroundColor: colors.bg.base }]}>
       <Stack.Screen options={{ headerShown: false }} />
-      <PluginHeader
+      <Header
         title="Display Font"
         colors={colors}
         onBack={() => router.back()}

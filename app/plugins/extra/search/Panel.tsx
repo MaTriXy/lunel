@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { ChevronDown, FileCode2, Search, TriangleAlert } from 'lucide-react-native';
-import PluginHeader, { usePluginHeaderHeight } from '@/components/PluginHeader';
+import Header, { useHeaderHeight } from "@/components/Header";
 import Loading from '@/components/Loading';
 import NotConnected from '@/components/NotConnected';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -84,7 +84,7 @@ function getHighlightedParts(content: string, query: string, caseSensitive: bool
 
 function SearchPanel({ isActive }: PluginPanelProps) {
   const { colors, fonts, spacing } = useTheme();
-  const headerHeight = usePluginHeaderHeight();
+  const headerHeight = useHeaderHeight();
   const { fs, isConnected } = useApi();
   const { openTab } = usePlugins();
   const queryInputRef = useRef<TextInput>(null);
@@ -181,16 +181,16 @@ function SearchPanel({ isActive }: PluginPanelProps) {
 
   if (!isConnected) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.bg.base, paddingTop: headerHeight }}>
-        <PluginHeader title="Codebase Search" colors={colors} />
+      <View style={{ flex: 1, backgroundColor: colors.bg.base }}>
+        <Header title="Codebase Search" colors={colors} />
         <NotConnected colors={colors} fonts={fonts} />
       </View>
     );
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg.base, paddingTop: headerHeight }}>
-      <PluginHeader title="Codebase Search" colors={colors} showBottomBorder={true} />
+    <View style={{ flex: 1, backgroundColor: colors.bg.base }}>
+      <Header title="Codebase Search" colors={colors} showBottomBorder={true} />
 
       <ScrollView
         style={{ flex: 1 }}

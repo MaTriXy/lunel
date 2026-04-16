@@ -1,4 +1,4 @@
-import PluginHeader, { BaseTab, usePluginHeaderHeight } from "@/components/PluginHeader";
+import Header, { BaseTab, useHeaderHeight } from "@/components/Header";
 import InfoSheet from "@/components/InfoSheet";
 import Loading from "@/components/Loading";
 import { LinearGradient } from "expo-linear-gradient";
@@ -1656,7 +1656,7 @@ const AnimatedAITab = memo(
 export default function AIPanel({ instanceId, isActive, bottomBarHeight }: PluginPanelProps) {
   const { colors, radius, fonts } = useTheme();
   const { settings } = useAppSettings();
-  const headerHeight = usePluginHeaderHeight();
+  const headerHeight = useHeaderHeight();
   const { status, sessionState } = useConnection();
   const { register, unregister } = useSessionRegistryActions();
   const drawerStatus = useDrawerStatus();
@@ -3146,7 +3146,7 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
       </InfoSheet>
 
       {/* Header */}
-      <PluginHeader
+      <Header
         title={activeTab ? formatBackendSessionTitle(activeTab.backend, activeTab.title) : "AI"}
         colors={colors}
         showBottomBorder={tabs.length > 0}
@@ -3209,7 +3209,6 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
               justifyContent: "center",
               alignItems: "center",
               gap: 20,
-              paddingTop: headerHeight,
             }}
           >
             <View style={{ alignItems: "center", gap: 8 }}>
@@ -3244,7 +3243,7 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
             {/* Messages or Welcome Screen */}
             <View style={{ flex: 1 }}>
             {isActiveSessionLoading ? (
-              <AISkeleton colors={colors} paddingTop={headerHeight} />
+              <AISkeleton colors={colors} paddingTop={0} />
             ) : hasContent ? (
               <FlashList
                 ref={messagesListRef}
@@ -3259,7 +3258,7 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
                 }}
                 contentContainerStyle={{
                   paddingHorizontal: 16,
-                  paddingTop: headerHeight + 18,
+                  paddingTop: 18,
                   paddingBottom: messagesBottomInset,
                 }}
                 onContentSizeChange={(_, contentHeight) => {
@@ -3297,7 +3296,7 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
                 ListFooterComponent={null}
               />
             ) : (
-              <Pressable style={{ flex: 1, paddingTop: headerHeight }} onPress={() => { inputRef.current?.blur(); Keyboard.dismiss(); }}>
+              <Pressable style={{ flex: 1 }} onPress={() => { inputRef.current?.blur(); Keyboard.dismiss(); }}>
                 <View style={styles.logoContainer}>
                   <View style={[styles.logoWrapper, { marginBottom: activeBackend === "codex" ? 8 : 0 }]}>
                     {activeBackend === "codex"

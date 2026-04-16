@@ -42,7 +42,7 @@ import {
   Check,
 } from 'lucide-react-native';
 import Loading from '@/components/Loading';
-import PluginHeader, { usePluginHeaderHeight } from '@/components/PluginHeader';
+import Header, { useHeaderHeight } from "@/components/Header";
 import { MenuView } from '@react-native-menu/menu';
 import { useTheme } from '@/contexts/ThemeContext';
 import { typography } from '@/constants/themes';
@@ -403,7 +403,7 @@ const FileActionSheet = memo(function FileActionSheet({
 
 function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
   const { colors, fonts, spacing, radius } = useTheme();
-  const headerHeight = usePluginHeaderHeight();
+  const headerHeight = useHeaderHeight();
 
   const { status, capabilities } = useConnection();
   const { fs } = useApi();
@@ -889,8 +889,8 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg.base, paddingTop: headerHeight }}>
-      <PluginHeader
+    <View style={{ flex: 1, backgroundColor: colors.bg.base }}>
+      <Header
         title="Explorer"
         colors={colors}
         rightAccessory={

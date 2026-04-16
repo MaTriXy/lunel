@@ -1,5 +1,5 @@
 import { useTheme } from "@/contexts/ThemeContext";
-import PluginHeader, { usePluginHeaderHeight } from "@/components/PluginHeader";
+import Header, { useHeaderHeight } from "@/components/Header";
 import { lunelApi, StorageFileInfo } from "@/lib/storage";
 import { ChevronRight, RefreshCw, AlertTriangle, FolderOpen, FileText, X, Trash } from "lucide-react-native";
 import { useRouter } from "expo-router";
@@ -23,7 +23,7 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 export default function StorageExplorerPage() {
   const { colors, fonts, radius, spacing } = useTheme();
   const router = useRouter();
-  const headerHeight = usePluginHeaderHeight();
+  const headerHeight = useHeaderHeight();
 
   const [files, setFiles] = useState<StorageFileInfo[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -109,8 +109,8 @@ export default function StorageExplorerPage() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.bg.base, paddingTop: headerHeight }]}>
-      <PluginHeader
+    <View style={[styles.container, { backgroundColor: colors.bg.base }]}>
+      <Header
         title="Storage Explorer"
         colors={colors}
         onBack={() => router.back()}

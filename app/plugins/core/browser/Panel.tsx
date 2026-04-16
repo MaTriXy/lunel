@@ -1,5 +1,5 @@
 import Loading from "@/components/Loading";
-import PluginHeader, { usePluginHeaderHeight } from "@/components/PluginHeader";
+import Header, { useHeaderHeight } from "@/components/Header";
 import { useConnection } from "@/contexts/ConnectionContext";
 import { useSessionRegistryActions } from "@/contexts/SessionRegistry";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -206,7 +206,7 @@ const DEVSOLE_STUBS: Record<
 export default function BrowserPanel({ bottomBarHeight }: PluginPanelProps) {
   const { colors, radius, fonts, isDark } = useTheme();
   const { discoveredProxyPorts, trackedProxyPorts, refreshProxyState, trackProxyPort, untrackProxyPort } = useConnection();
-  const headerHeight = usePluginHeaderHeight();
+  const headerHeight = useHeaderHeight();
   const { register, unregister } = useSessionRegistryActions();
   const { height: windowHeight } = useWindowDimensions();
 
@@ -2058,7 +2058,7 @@ export default function BrowserPanel({ bottomBarHeight }: PluginPanelProps) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg.base }}>
       {/* Header */}
-      <PluginHeader
+      <Header
         title={activeTab?.title || "Browser"}
         colors={colors}
         showBottomBorder={false}
@@ -2066,7 +2066,7 @@ export default function BrowserPanel({ bottomBarHeight }: PluginPanelProps) {
       />
 
       <View
-        style={{ flex: 1, position: "relative", paddingTop: headerHeight }}
+        style={{ flex: 1, position: "relative" }}
         onLayout={(event) => {
           setBrowserViewportHeight(event.nativeEvent.layout.height);
         }}

@@ -1,5 +1,5 @@
 import { useTheme } from "@/contexts/ThemeContext";
-import PluginHeader, { usePluginHeaderHeight } from "@/components/PluginHeader";
+import Header, { useHeaderHeight } from "@/components/Header";
 import { Check, Star } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { Stack, useRouter } from "expo-router";
@@ -61,7 +61,7 @@ function RatingStars({
 export default function FeedbackPage() {
   const { colors, fonts, radius, spacing, typography } = useTheme();
   const router = useRouter();
-  const headerHeight = usePluginHeaderHeight();
+  const headerHeight = useHeaderHeight();
   const [email, setEmail] = useState("");
   const [content, setContent] = useState("");
   const [rating, setRating] = useState(0);
@@ -136,9 +136,9 @@ export default function FeedbackPage() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.bg.base, paddingTop: headerHeight }]}>
+    <View style={[styles.container, { backgroundColor: colors.bg.base }]}>
       <Stack.Screen options={{ headerShown: false }} />
-      <PluginHeader title="Feedback" colors={colors} onBack={() => router.back()} />
+      <Header title="Feedback" colors={colors} onBack={() => router.back()} />
 
       {isSent ? (
         <View style={styles.sentState}>

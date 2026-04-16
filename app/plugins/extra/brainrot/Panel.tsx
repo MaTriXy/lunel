@@ -1,4 +1,4 @@
-import PluginHeader, { usePluginHeaderHeight } from "@/components/PluginHeader";
+import Header, { useHeaderHeight } from "@/components/Header";
 import { useAppSettings } from "@/contexts/AppSettingsContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { RefreshCw } from "lucide-react-native";
@@ -18,7 +18,7 @@ const BRAINROT_USER_AGENT =
 export default function BrainrotPanel({ isActive }: PluginPanelProps) {
   const { colors } = useTheme();
   const { settings } = useAppSettings();
-  const headerHeight = usePluginHeaderHeight();
+  const headerHeight = useHeaderHeight();
   const [reloadKey, setReloadKey] = useState(0);
   const webViewRef = useRef<WebViewType>(null);
 
@@ -52,11 +52,10 @@ export default function BrainrotPanel({ isActive }: PluginPanelProps) {
         styles.container,
         {
           backgroundColor: colors.bg.base,
-          paddingTop: headerHeight,
         },
       ]}
     >
-      <PluginHeader
+      <Header
         title="Brainrot"
         colors={colors}
         rightAccessory={

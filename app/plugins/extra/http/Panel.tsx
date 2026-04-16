@@ -12,7 +12,7 @@ import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
 import { Clock, ChevronDown, ChevronRight, X, Plus, Copy, Check } from 'lucide-react-native';
 import { MenuView } from '@react-native-menu/menu';
-import PluginHeader, { usePluginHeaderHeight } from '@/components/PluginHeader';
+import Header, { useHeaderHeight } from "@/components/Header";
 import * as Clipboard from 'expo-clipboard';
 import { useTheme } from '@/contexts/ThemeContext';
 import { typography } from '@/constants/themes';
@@ -72,7 +72,7 @@ const METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
 
 function HttpPanel({ instanceId, isActive, bottomBarHeight }: PluginPanelProps) {
   const { colors, fonts, spacing } = useTheme();
-  const headerHeight = usePluginHeaderHeight();
+  const headerHeight = useHeaderHeight();
   const { http: httpApi, isConnected } = useApi();
 
   const [method, setMethod] = useState<HttpMethod>('GET');
@@ -329,8 +329,8 @@ function HttpPanel({ instanceId, isActive, bottomBarHeight }: PluginPanelProps) 
   });
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg.base, paddingTop: headerHeight }}>
-      <PluginHeader title="Rest API Client" colors={colors} />
+    <View style={{ flex: 1, backgroundColor: colors.bg.base }}>
+      <Header title="Rest API Client" colors={colors} />
 
       <View style={{
         flexDirection: 'row',

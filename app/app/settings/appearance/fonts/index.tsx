@@ -1,5 +1,5 @@
 import { useTheme } from "@/contexts/ThemeContext";
-import PluginHeader, { usePluginHeaderHeight } from "@/components/PluginHeader";
+import Header, { useHeaderHeight } from "@/components/Header";
 import {
   displayFamilies,
   monoFamilies,
@@ -47,16 +47,16 @@ export default function FontsPage() {
     fontSelection,
   } = useTheme();
   const router = useRouter();
-  const headerHeight = usePluginHeaderHeight();
+  const headerHeight = useHeaderHeight();
 
   const currentNormalName = normalFamilies[fontSelection.normal]?.name ?? "Default";
   const currentMonoName = monoFamilies[fontSelection.mono]?.name ?? "Default";
   const currentDisplayName = displayFamilies[fontSelection.display]?.name ?? "Default";
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.bg.base, paddingTop: headerHeight }]}>
+    <View style={[styles.container, { backgroundColor: colors.bg.base }]}>
       <Stack.Screen options={{ headerShown: false }} />
-      <PluginHeader title="Fonts" colors={colors} onBack={() => router.back()} />
+      <Header title="Fonts" colors={colors} onBack={() => router.back()} />
 
       <ScrollView
         style={{ flex: 1 }}

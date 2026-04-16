@@ -1,4 +1,4 @@
-import PluginHeader, { BaseTab, usePluginHeaderHeight } from "@/components/PluginHeader";
+import Header, { BaseTab, useHeaderHeight } from "@/components/Header";
 import Loading from "@/components/Loading";
 import { useSessionRegistryActions } from "@/contexts/SessionRegistry";
 import { radius } from "@/constants/themes";
@@ -1319,7 +1319,7 @@ export default function TerminalPanel({
   bottomBarHeight,
 }: PluginPanelProps) {
   const { colors, radius, fonts } = useTheme();
-  const headerHeight = usePluginHeaderHeight();
+  const headerHeight = useHeaderHeight();
   const { status } = useConnection();
   const isConnected = status === "connected";
   const { register, unregister } = useSessionRegistryActions();
@@ -1959,7 +1959,7 @@ export default function TerminalPanel({
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg.base }}>
       {/* Header */}
-      <PluginHeader
+      <Header
         title={activeTab?.title || "Terminal"}
         colors={colors}
         showBottomBorder={tabs.length > 0}
@@ -1993,7 +1993,7 @@ export default function TerminalPanel({
       />
 
       {/* Terminal Content */}
-      <View style={{ flex: 1, paddingTop: headerHeight, paddingBottom: controlsReserve }}>
+      <View style={{ flex: 1, paddingBottom: controlsReserve }}>
         {tabs.length === 0 ? (
           <View
             style={{

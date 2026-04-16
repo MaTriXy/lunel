@@ -35,7 +35,7 @@ import {
   Timer,
   Check,
 } from 'lucide-react-native';
-import PluginHeader, { usePluginHeaderHeight } from '@/components/PluginHeader';
+import Header, { useHeaderHeight } from "@/components/Header";
 import { useTheme } from '@/contexts/ThemeContext';
 import { typography } from '@/constants/themes';
 import { PluginPanelProps } from '../../types';
@@ -58,7 +58,7 @@ interface Tool {
 
 function ToolsPanel({ instanceId, isActive, bottomBarHeight }: PluginPanelProps) {
   const { colors, fonts, spacing, radius } = useTheme();
-  const headerHeight = usePluginHeaderHeight();
+  const headerHeight = useHeaderHeight();
   const { height: keyboardHeightSV } = useReanimatedKeyboardAnimation();
   const rootAnimatedStyle = useAnimatedStyle(() => ({
     marginBottom: Math.max(0, -keyboardHeightSV.value - bottomBarHeight),
@@ -395,8 +395,8 @@ function ToolsPanel({ instanceId, isActive, bottomBarHeight }: PluginPanelProps)
   };
 
   return (
-    <Animated.View style={[{ flex: 1, backgroundColor: colors.bg.base, paddingTop: headerHeight }, rootAnimatedStyle]}>
-      <PluginHeader
+    <Animated.View style={[{ flex: 1, backgroundColor: colors.bg.base }, rootAnimatedStyle]}>
+      <Header
         title="Tools"
         colors={colors}
       />

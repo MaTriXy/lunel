@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 import { Plus } from "lucide-react-native";
-import { BaseTab } from "./PluginHeader";
+import { BaseTab } from "@/components/Header";
 
 interface PluginTabBarProps<T extends BaseTab> {
   tabs: T[];

@@ -1,5 +1,5 @@
 import { useTheme } from "@/contexts/ThemeContext";
-import PluginHeader, { usePluginHeaderHeight } from "@/components/PluginHeader";
+import Header, { useHeaderHeight } from "@/components/Header";
 import {
   NormalFamilyId,
   normalFamilies,
@@ -95,14 +95,14 @@ export default function NormalFontPage() {
     setNormalFont,
   } = useTheme();
   const router = useRouter();
-  const headerHeight = usePluginHeaderHeight();
+  const headerHeight = useHeaderHeight();
 
   const normalFontIds = Object.keys(normalFamilies) as NormalFamilyId[];
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.bg.base, paddingTop: headerHeight }]}>
+    <View style={[styles.container, { backgroundColor: colors.bg.base }]}>
       <Stack.Screen options={{ headerShown: false }} />
-      <PluginHeader
+      <Header
         title="Normal Font"
         colors={colors}
         onBack={() => router.back()}

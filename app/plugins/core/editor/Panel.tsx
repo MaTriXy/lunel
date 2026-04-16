@@ -1,5 +1,5 @@
 import Loading from "@/components/Loading";
-import PluginHeader, { usePluginHeaderHeight } from "@/components/PluginHeader";
+import Header, { useHeaderHeight } from "@/components/Header";
 import { Message, useConnection } from "@/contexts/ConnectionContext";
 import { useEditorConfig } from "@/contexts/EditorContext";
 import { useReviewPrompt } from "@/contexts/ReviewPromptContext";
@@ -301,7 +301,7 @@ function createEditorHtml({
 export default function EditorPanel({ bottomBarHeight: _bottomBarHeight }: PluginPanelProps) {
   const { colors, fonts, fontSelection, isDark } = useTheme();
   const { fireData, onDataEvent } = useConnection();
-  const headerHeight = usePluginHeaderHeight();
+  const headerHeight = useHeaderHeight();
   const { openTab } = usePlugins();
   const { config } = useEditorConfig();
   const { showEditorReviewButton, requestEditorReview } = useReviewPrompt();
@@ -1027,7 +1027,7 @@ export default function EditorPanel({ bottomBarHeight: _bottomBarHeight }: Plugi
       style={[styles.container, { backgroundColor: colors.bg.base }]}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <PluginHeader
+      <Header
         title={activeTab?.title || "Editor"}
         colors={colors}
         showBottomBorder={!!activeTab && !isSearchOpen}
@@ -1035,7 +1035,7 @@ export default function EditorPanel({ bottomBarHeight: _bottomBarHeight }: Plugi
         rightAccessory={headerAccessory}
       />
 
-      <View style={[styles.content, { paddingTop: headerHeight }]}>
+      <View style={[styles.content, {  }]}>
         {isSearchOpen && (
           <View style={[styles.searchPanel, { backgroundColor: colors.bg.base, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border.secondary }]}>
             <View style={styles.searchRow}>

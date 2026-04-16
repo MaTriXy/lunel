@@ -1,5 +1,5 @@
 import { useTheme } from "@/contexts/ThemeContext";
-import PluginHeader, { usePluginHeaderHeight } from "@/components/PluginHeader";
+import Header, { useHeaderHeight } from "@/components/Header";
 import { ExternalLink } from "lucide-react-native";
 import { useRouter } from "expo-router";
 import React from "react";
@@ -64,11 +64,11 @@ function LinkRow({ label, url }: LinkRowProps) {
 export default function HelpPage() {
   const { colors, fonts, spacing, typography } = useTheme();
   const router = useRouter();
-  const headerHeight = usePluginHeaderHeight();
+  const headerHeight = useHeaderHeight();
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.bg.base, paddingTop: headerHeight }]}>
-      <PluginHeader title="Help & Information" colors={colors} onBack={() => router.back()} />
+    <View style={[styles.container, { backgroundColor: colors.bg.base }]}>
+      <Header title="Help & Information" colors={colors} onBack={() => router.back()} />
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false} keyboardDismissMode="on-drag">
         <Text style={[styles.sectionHeader, { color: colors.fg.muted, fontFamily: fonts.sans.medium, fontSize: typography.caption }]}>

@@ -1,5 +1,5 @@
 import { useTheme } from "@/contexts/ThemeContext";
-import PluginHeader, { usePluginHeaderHeight } from "@/components/PluginHeader";
+import Header, { useHeaderHeight } from "@/components/Header";
 import { ChevronRight, LucideIcon, Palette, Type, Code, Sparkles, MoonStar, Shell } from "lucide-react-native";
 import { useRouter } from "expo-router";
 
@@ -37,11 +37,11 @@ function SettingsRow({ icon: Icon, label, onPress }: SettingsRowProps) {
 export default function SettingsPage() {
   const { colors, fonts, radius, spacing, typography } = useTheme();
   const router = useRouter();
-  const headerHeight = usePluginHeaderHeight();
+  const headerHeight = useHeaderHeight();
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.bg.base, paddingTop: headerHeight }]}>
-      <PluginHeader title="Settings" colors={colors} onBack={() => router.back()} />
+    <View style={[styles.container, { backgroundColor: colors.bg.base }]}>
+      <Header title="Settings" colors={colors} onBack={() => router.back()} />
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false} keyboardDismissMode="on-drag">
         {/* Appearance Section */}

@@ -1,5 +1,5 @@
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
-import PluginHeader, { usePluginHeaderHeight } from "@/components/PluginHeader";
+import Header, { useHeaderHeight } from "@/components/Header";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Stack, useRouter } from "expo-router";
 
@@ -9,12 +9,12 @@ import { StyleSheet, View } from "react-native";
 export default function ThemePage() {
   const { colors } = useTheme();
   const router = useRouter();
-  const headerHeight = usePluginHeaderHeight();
+  const headerHeight = useHeaderHeight();
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.bg.base, paddingTop: headerHeight }]}>
+    <View style={[styles.container, { backgroundColor: colors.bg.base }]}>
       <Stack.Screen options={{ headerShown: false }} />
-      <PluginHeader title="Theme" colors={colors} onBack={() => router.back()} />
+      <Header title="Theme" colors={colors} onBack={() => router.back()} />
 
       {/* Theme Switcher */}
       <ThemeSwitcher />

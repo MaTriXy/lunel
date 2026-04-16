@@ -1,6 +1,6 @@
 import { useEditorConfig } from "@/contexts/EditorContext";
 import { useTheme } from "@/contexts/ThemeContext";
-import PluginHeader, { usePluginHeaderHeight } from "@/components/PluginHeader";
+import Header, { useHeaderHeight } from "@/components/Header";
 import { Minus, Plus } from "lucide-react-native";
 import { Stack, useRouter } from "expo-router";
 
@@ -131,12 +131,12 @@ export default function EditorSettingsPage() {
   const { colors, fonts, spacing, typography } = useTheme();
   const { config, updateConfig } = useEditorConfig();
   const router = useRouter();
-  const headerHeight = usePluginHeaderHeight();
+  const headerHeight = useHeaderHeight();
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.bg.base, paddingTop: headerHeight }]}>
+    <View style={[styles.container, { backgroundColor: colors.bg.base }]}>
       <Stack.Screen options={{ headerShown: false }} />
-      <PluginHeader title="Editor" colors={colors} onBack={() => router.back()} />
+      <Header title="Editor" colors={colors} onBack={() => router.back()} />
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false} keyboardDismissMode="on-drag">
         {/* Font Section */}

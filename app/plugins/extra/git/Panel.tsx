@@ -34,7 +34,7 @@ import {
   X,
   Trash2,
 } from 'lucide-react-native';
-import PluginHeader, { usePluginHeaderHeight } from '@/components/PluginHeader';
+import Header, { useHeaderHeight } from "@/components/Header";
 import NotConnected from '@/components/NotConnected';
 import Loading from '@/components/Loading';
 import Toast from '@/components/Toast';
@@ -154,7 +154,7 @@ function StatusBadge({ status, fonts, colors }: { status: string; fonts: any; co
 
 function GitPanel({ instanceId, isActive }: PluginPanelProps) {
   const { colors, fonts, spacing, radius } = useTheme();
-  const headerHeight = usePluginHeaderHeight();
+  const headerHeight = useHeaderHeight();
   const { status: connStatus } = useConnection();
   const { git } = useApi();
   const isConnected = connStatus === 'connected';
@@ -561,8 +561,8 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
   // ── Not connected ──────────────────────────────────────────────
   if (!isConnected) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.bg.base, paddingTop: headerHeight }}>
-        <PluginHeader title="Git" colors={colors} />
+      <View style={{ flex: 1, backgroundColor: colors.bg.base }}>
+        <Header title="Git" colors={colors} />
         <NotConnected colors={colors} fonts={fonts} />
       </View>
     );
@@ -578,8 +578,8 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg.base, paddingTop: headerHeight }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <PluginHeader
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg.base }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <Header
         title="Git"
         colors={colors}
         showBottomBorder={!loading}
@@ -1184,13 +1184,13 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
         onRequestClose={() => setShowCommitDetailsModal(false)}
       >
         <View style={{ flex: 1, backgroundColor: colors.bg.base }}>
-          <PluginHeader
+          <Header
             title={selectedCommitDetails?.commit.hash?.substring(0, 7) ?? 'Commit'}
             onBack={() => setShowCommitDetailsModal(false)}
             colors={colors}
           />
 
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingTop: headerHeight + spacing[3], padding: spacing[3], paddingBottom: spacing[6] }}>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: spacing[3], paddingBottom: spacing[6] }}>
             {/* Commit meta */}
             {selectedCommitDetails && (
               <View style={{ marginBottom: spacing[4], gap: spacing[3] }}>

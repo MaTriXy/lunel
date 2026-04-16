@@ -1,5 +1,5 @@
 import { useTheme } from "@/contexts/ThemeContext";
-import PluginHeader, { usePluginHeaderHeight } from "@/components/PluginHeader";
+import Header, { useHeaderHeight } from "@/components/Header";
 import {
   MonoFamilyId,
   monoFamilies,
@@ -84,14 +84,14 @@ export default function CodeFontPage() {
     setMonoFont,
   } = useTheme();
   const router = useRouter();
-  const headerHeight = usePluginHeaderHeight();
+  const headerHeight = useHeaderHeight();
 
   const monoFontIds = Object.keys(monoFamilies) as MonoFamilyId[];
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.bg.base, paddingTop: headerHeight }]}>
+    <View style={[styles.container, { backgroundColor: colors.bg.base }]}>
       <Stack.Screen options={{ headerShown: false }} />
-      <PluginHeader
+      <Header
         title="Code Font"
         colors={colors}
         onBack={() => router.back()}

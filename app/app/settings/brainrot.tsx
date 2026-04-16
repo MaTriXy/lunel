@@ -1,6 +1,6 @@
 import { useAppSettings } from "@/contexts/AppSettingsContext";
 import { useTheme } from "@/contexts/ThemeContext";
-import PluginHeader, { usePluginHeaderHeight } from "@/components/PluginHeader";
+import Header, { useHeaderHeight } from "@/components/Header";
 import { Check } from "lucide-react-native";
 import { Stack, useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -99,16 +99,16 @@ export default function BrainrotSettingsPage() {
   const { colors, fonts, spacing, typography } = useTheme();
   const { settings, updateSetting } = useAppSettings();
   const router = useRouter();
-  const headerHeight = usePluginHeaderHeight();
+  const headerHeight = useHeaderHeight();
   const needsWebviewLoginNotice =
     settings.brainrotSource === "instagram"
     || settings.brainrotSource === "x"
     || settings.brainrotSource === "tiktok";
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.bg.base, paddingTop: headerHeight }]}>
+    <View style={[styles.container, { backgroundColor: colors.bg.base }]}>
       <Stack.Screen options={{ headerShown: false }} />
-      <PluginHeader title="Brainrot" colors={colors} onBack={() => router.back()} />
+      <Header title="Brainrot" colors={colors} onBack={() => router.back()} />
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false} keyboardDismissMode="on-drag">
         <Text style={[styles.sectionHeader, { color: colors.fg.muted, fontFamily: fonts.sans.medium, fontSize: typography.caption }]}>

@@ -9,7 +9,7 @@ import {
   Alert,
 } from 'react-native';
 import { X, RefreshCw, AlertTriangle, Wifi, Search } from 'lucide-react-native';
-import PluginHeader, { usePluginHeaderHeight } from '@/components/PluginHeader';
+import Header, { useHeaderHeight } from "@/components/Header";
 import NotConnected from '@/components/NotConnected';
 import Loading from '@/components/Loading';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -18,7 +18,7 @@ import { useApi, PortInfo, ApiError } from '@/hooks/useApi';
 
 function PortsPanel({ instanceId, isActive }: PluginPanelProps) {
   const { colors, fonts, spacing, radius } = useTheme();
-  const headerHeight = usePluginHeaderHeight();
+  const headerHeight = useHeaderHeight();
   const { ports: portsApi, isConnected } = useApi();
 
   const [portsList, setPortsList] = useState<PortInfo[]>([]);
@@ -79,16 +79,16 @@ function PortsPanel({ instanceId, isActive }: PluginPanelProps) {
 
   if (!isConnected) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.bg.base, paddingTop: headerHeight }}>
-        <PluginHeader title="Ports" colors={colors} />
+      <View style={{ flex: 1, backgroundColor: colors.bg.base }}>
+        <Header title="Ports" colors={colors} />
         <NotConnected colors={colors} fonts={fonts} />
       </View>
     );
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg.base, paddingTop: headerHeight, position: 'relative' }}>
-      <PluginHeader
+    <View style={{ flex: 1, backgroundColor: colors.bg.base, position: 'relative' }}>
+      <Header
         title="Ports"
         colors={colors}
         rightAccessory={
