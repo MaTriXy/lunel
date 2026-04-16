@@ -15,8 +15,10 @@ import {
   LoaderCircle,
   MessageCircle,
   PencilLine,
+  SquarePen,
   Search,
   Settings,
+  Trash,
   X,
 } from "lucide-react-native";
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -168,6 +170,27 @@ export default function DrawerContent(props: DrawerContentComponentProps) {
 
   const handleSessionClose = (id: string) => {
     reg?.onSessionClose(id);
+  };
+
+  const handleSessionRenameStart = (id: string, currentTitle: string) => {
+    if (!reg?.onSessionRename) return;
+    Alert.prompt(
+      "Rename Session",
+      "Enter a new title",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Rename",
+          onPress: (value) => {
+            const trimmed = (value || "").trim();
+            if (!trimmed) return;
+            reg.onSessionRename?.(id, trimmed);
+          },
+        },
+      ],
+      "plain-text",
+      currentTitle,
+    );
   };
 
   const hideCreateButton = activePluginId === 'editor' || activePluginId === 'explorer';
@@ -331,13 +354,24 @@ export default function DrawerContent(props: DrawerContentComponentProps) {
                                   >
                                     {item.title}
                                   </Text>
-                                  <TouchableOpacity
-                                    onPress={() => handleSessionClose(item.id)}
-                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                    activeOpacity={0.6}
-                                  >
-                                    <X size={18} color={colors.fg.muted} strokeWidth={2} />
-                                  </TouchableOpacity>
+                                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                                    {reg?.onSessionRename ? (
+                                      <TouchableOpacity
+                                        onPress={() => handleSessionRenameStart(item.id, item.title)}
+                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                        activeOpacity={0.6}
+                                      >
+                                        <SquarePen size={18} color={colors.fg.muted} strokeWidth={2} />
+                                      </TouchableOpacity>
+                                    ) : null}
+                                    <TouchableOpacity
+                                      onPress={() => handleSessionClose(item.id)}
+                                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                      activeOpacity={0.6}
+                                    >
+                                      <Trash size={18} color={colors.fg.muted} strokeWidth={2} />
+                                    </TouchableOpacity>
+                                  </View>
                                 </TouchableOpacity>
                               );
                             })}

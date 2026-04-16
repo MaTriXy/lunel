@@ -72,6 +72,7 @@ export interface AIProvider {
   listSessions(): Promise<{ sessions: unknown }>;
   getSession(id: string): Promise<{ session: SessionInfo }>;
   deleteSession(id: string): Promise<{ deleted: boolean }>;
+  renameSession(id: string, title: string): Promise<{ session: SessionInfo }>;
 
   // Messages
   getMessages(sessionId: string): Promise<{ messages: MessageInfo[] }>;

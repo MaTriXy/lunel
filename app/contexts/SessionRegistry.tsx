@@ -36,6 +36,7 @@ export interface SessionRegistration {
   loading?: boolean;
   onSessionPress: (id: string) => void;
   onSessionClose: (id: string) => void;
+  onSessionRename?: (id: string, title: string) => void;
   onCreateSession: () => void;
 }
 
@@ -69,6 +70,7 @@ export function SessionRegistryProvider({ children }: { children: React.ReactNod
       ) {
         existing.onSessionPress = reg.onSessionPress;
         existing.onSessionClose = reg.onSessionClose;
+        existing.onSessionRename = reg.onSessionRename;
         existing.onCreateSession = reg.onCreateSession;
         return prev;
       }

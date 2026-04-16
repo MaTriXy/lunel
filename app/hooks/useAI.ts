@@ -61,6 +61,12 @@ export function useAI(events?: AIEvents) {
     return response.payload.deleted !== false;
   }, [sendControl]);
 
+  const renameSession = useCallback(async (id: string, title: string, backend: AiBackend = 'opencode'): Promise<AISession> => {
+    const response = await sendControl('ai', 'renameSession', { id, title, backend });
+    if (!response.ok) throw new Error(response.error?.message || 'Failed to rename session');
+    return { ...(response.payload.session as AISession), backend };
+  }, [sendControl]);
+
   const getMessages = useCallback(async (sessionId: string, backend: AiBackend = 'opencode'): Promise<AIMessage[]> => {
     // Use data channel — message payloads can exceed the 64KB control channel limit
     const response = await sendData('ai', 'getMessages', { id: sessionId, backend });
@@ -154,6 +160,7 @@ export function useAI(events?: AIEvents) {
     listSessions,
     getSession,
     deleteSession,
+    renameSession,
     getMessages,
     sendPrompt,
     abort,

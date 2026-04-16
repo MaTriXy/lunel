@@ -155,6 +155,14 @@ export class OpenCodeProvider implements AIProvider {
     return { deleted: true };
   }
 
+  async renameSession(id: string, title: string): Promise<{ session: SessionInfo }> {
+    const response = await this.client!.session.update({
+      path: { id },
+      body: { title },
+    });
+    return { session: requireData(response, "session.update") };
+  }
+
   // -------------------------------------------------------------------------
   // Messages
   // -------------------------------------------------------------------------

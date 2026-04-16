@@ -89,6 +89,7 @@ export class AiManager {
   createSession(backend: AiBackend, title?: string) { return this.get(backend).createSession(title); }
   getSession(backend: AiBackend, id: string) { return this.get(backend).getSession(id); }
   deleteSession(backend: AiBackend, id: string) { return this.get(backend).deleteSession(id); }
+  renameSession(backend: AiBackend, id: string, title: string) { return this.get(backend).renameSession(id, title); }
   getMessages(backend: AiBackend, sessionId: string) { return this.get(backend).getMessages(sessionId); }
 
   prompt(

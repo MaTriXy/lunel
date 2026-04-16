@@ -2988,6 +2988,7 @@ async function processMessage(message: Message): Promise<Response> {
           case "listSessions":   result = await aiManager.listAllSessions(); break;
           case "getSession":     result = await aiManager.getSession(backend, payload.id as string); break;
           case "deleteSession":  result = await aiManager.deleteSession(backend, payload.id as string); break;
+          case "renameSession":  result = await aiManager.renameSession(backend, payload.id as string, payload.title as string); break;
           case "getMessages":    result = await aiManager.getMessages(backend, payload.id as string); break;
           case "abort":          result = await aiManager.abort(backend, payload.sessionId as string); break;
           case "agents":         result = await aiManager.agents(backend); break;

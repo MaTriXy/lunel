@@ -241,6 +241,50 @@ export class CodexProvider implements AIProvider {
     return { deleted: true };
   }
 
+  async renameSession(id: string, title: string): Promise<{ session: SessionInfo }> {
+    const trimmed = title.trim();
+    if (!trimmed) {
+      throw new Error("Session title cannot be empty");
+    }
+
+    const methodsToTry = [
+      { method: "thread/name/set", params: { threadId: id, name: trimmed } },
+      { method: "thread/name/set", params: { threadId: id, title: trimmed } },
+      { method: "thread/name/update", params: { threadId: id, name: trimmed } },
+      { method: "thread/name/update", params: { threadId: id, title: trimmed } },
+      { method: "thread/metadata/update", params: { threadId: id, title: trimmed } },
+      { method: "thread/update", params: { threadId: id, title: trimmed } },
+      { method: "thread/rename", params: { threadId: id, title: trimmed } },
+    ] as const;
+
+    let renamed = false;
+    let lastError: unknown = null;
+    for (const entry of methodsToTry) {
+      try {
+        await this.call(entry.method, entry.params);
+        renamed = true;
+        break;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    if (!renamed && lastError) {
+      throw lastError instanceof Error ? lastError : new Error(String(lastError));
+    }
+
+    const existing = this.sessions.get(id) ?? this.ensureLocalSession(id);
+    const session = this.upsertSession({
+      id,
+      title: trimmed,
+      createdAt: existing.createdAt,
+      updatedAt: Date.now(),
+      archived: existing.archived,
+      cwd: existing.cwd,
+    }, true);
+    return { session: this.toSessionInfo(session) };
+  }
+
   async getMessages(sessionId: string): Promise<{ messages: MessageInfo[] }> {
     const session = this.ensureLocalSession(sessionId);
     const result = await this.call("thread/read", {

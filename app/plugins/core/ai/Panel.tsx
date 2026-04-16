@@ -2458,6 +2458,34 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
     }
   };
 
+  const renameTab = (tabId: string, nextTitle: string) => {
+    const tab = tabs.find((t) => t.id === tabId);
+    if (!tab?.sessionId) return;
+    const trimmed = nextTitle.trim();
+    if (!trimmed) return;
+
+    const previousTitle = tab.title;
+    setSessionTabs((prev) => prev.map((t) => (
+      t.id === tabId ? { ...t, title: trimmed } : t
+    )));
+
+    void (async () => {
+      try {
+        const renamed = await ai.renameSession(tab.sessionId!, trimmed, tab.backend);
+        const finalTitle = (renamed.title || "").trim() || trimmed;
+        setSessionTabs((prev) => prev.map((t) => (
+          t.id === tabId ? { ...t, title: finalTitle } : t
+        )));
+      } catch (err) {
+        setSessionTabs((prev) => prev.map((t) => (
+          t.id === tabId ? { ...t, title: previousTitle } : t
+        )));
+        const message = err instanceof Error ? err.message : "Failed to rename session";
+        Alert.alert("Rename Failed", message);
+      }
+    })();
+  };
+
   const handleTabPress = useCallback(async (tabId: string) => {
     setPendingBackend(null);
     setActiveTabId(tabId);
@@ -3194,9 +3222,10 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
       loading: status === 'connected' && (!isInitialized || isInitialSessionsLoading),
       onSessionPress: handleTabPress,
       onSessionClose: closeTab,
+      onSessionRename: renameTab,
       onCreateSession: createNewTab,
     });
-  }, [tabs, activeTabId, status, isInitialized, isInitialSessionsLoading, register, handleTabPress, closeTab, createNewTab]);
+  }, [tabs, activeTabId, status, isInitialized, isInitialSessionsLoading, register, handleTabPress, closeTab, renameTab, createNewTab]);
 
   useEffect(() => () => unregister('ai'), [unregister]);
 
