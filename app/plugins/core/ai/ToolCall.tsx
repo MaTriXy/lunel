@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SquaresSubtract } from "lucide-react-native";
+import { Terminal, SquaresSubtract } from "lucide-react-native";
 import Svg, { Path } from "react-native-svg";
 import { useEditorConfig } from "@/contexts/EditorContext";
 import { typography } from "@/constants/themes";
@@ -265,9 +265,11 @@ export default function ToolCall({
   const headerLabel = commandPreview || toolName;
   const state = (part.state as string) || "running";
   const bodyFontSize = config.aiFontSize;
-  const headerFontSize = groupedRow ? typography.subHeading : bodyFontSize;
-  const headerFontFamily = groupedRow ? fonts.sans.regular : fonts.mono.regular;
-  const headerColor = groupedRow ? colors.fg.muted : colors.fg.default;
+  const useCompactCommandRow = compactCommandRow || groupedRow;
+  const useCommandTypography = groupedRow || isCommandRow;
+  const headerFontSize = useCommandTypography ? typography.subHeading : bodyFontSize;
+  const headerFontFamily = useCommandTypography ? fonts.sans.regular : fonts.mono.regular;
+  const headerColor = useCommandTypography ? colors.fg.muted : colors.fg.default;
 
   const isError = state === "error";
   const isCompleted = state === "completed";
@@ -293,20 +295,26 @@ export default function ToolCall({
         onPress={canExpand ? () => setExpanded(!expanded) : undefined}
         style={[
           styles.header,
+          groupedRow ? styles.groupedHeader : undefined,
+          expanded ? { backgroundColor: colors.bg.raised } : undefined,
           isCommandRow && expanded ? styles.headerExpandedTop : undefined,
-          isCommandRow && compactCommandRow ? styles.compactCommandHeader : undefined,
+          isCommandRow && useCompactCommandRow && !groupedRow ? styles.compactCommandHeader : undefined,
         ]}
         activeOpacity={canExpand ? 0.7 : 1}
       >
         <View style={[styles.headerLeft, isCommandRow && expanded ? styles.headerLeftTop : undefined]}>
           <View style={[styles.iconFrame, { borderColor: `${colors.fg.subtle}4D` }]}>
-            <SquaresSubtract size={15} color={colors.fg.muted} strokeWidth={2} />
+            {isCommandRow ? (
+              <Terminal size={15} color={colors.fg.muted} strokeWidth={2} />
+            ) : (
+              <SquaresSubtract size={15} color={colors.fg.muted} strokeWidth={2} />
+            )}
           </View>
           {isCommandRow ? (
             <View
               style={[
                 styles.commandPill,
-                compactCommandRow ? styles.commandPillCompact : undefined,
+                useCompactCommandRow ? styles.commandPillCompact : undefined,
                 expanded ? styles.commandPillTop : undefined,
               ]}
             >
@@ -347,6 +355,7 @@ export default function ToolCall({
         <View
           style={[
             styles.body,
+              groupedRow ? styles.groupedBody : undefined,
               {
                 borderWidth: isCommandRow ? 0 : 1,
                 borderColor: colors.bg.raised,
@@ -472,9 +481,15 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     gap: 8,
   },
+  groupedHeader: {
+    marginHorizontal: -4,
+    paddingHorizontal: 4,
+    borderRadius: 10,
+  },
   compactCommandHeader: {
     paddingHorizontal: 0,
     paddingVertical: 0,
+    borderRadius: 10,
   },
   headerLeft: {
     flexDirection: "row",
@@ -531,6 +546,9 @@ const styles = StyleSheet.create({
     padding: 10,
     gap: 8,
     marginTop: 3,
+  },
+  groupedBody: {
+    marginHorizontal: -4,
   },
   diffList: {
     gap: 8,

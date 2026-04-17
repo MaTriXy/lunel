@@ -737,6 +737,7 @@ function deriveActivityLabelFromPart(part: AIPart): string | null {
 type MessageDisplayItem =
   | { kind: "part"; key: string; part: AIPart }
   | { kind: "command-group"; key: string; parts: AIPart[] }
+  | { kind: "command-run-group"; key: string; parts: AIPart[] }
   | { kind: "exploration-group"; key: string; parts: AIPart[] };
 
 function getPartToolName(part: AIPart): string {
@@ -853,6 +854,21 @@ function isGroupablePart(part: AIPart): boolean {
   return part.type === "step-start" || part.type === "step-finish";
 }
 
+function isCommandToolPart(part: AIPart): boolean {
+  if (part.type !== "tool" && part.type !== "tool-call" && part.type !== "tool-result") {
+    return false;
+  }
+
+  const toolName = getPartToolName(part);
+  if (!toolName) return false;
+
+  return toolName === "command"
+    || toolName.includes("bash")
+    || toolName.includes("shell")
+    || toolName.includes("terminal")
+    || toolName.includes("exec");
+}
+
 function isHiddenMetaPart(part: AIPart): boolean {
   if (part.type === "step-start" || part.type === "step-finish") return true;
   if (part.type === "text") {
@@ -890,6 +906,15 @@ function buildToolGroupLabel(parts: AIPart[]): string {
   return `${eventCount} Event${eventCount === 1 ? "" : "s"}`;
 }
 
+function buildCommandGroupLabel(parts: AIPart[]): string {
+  const commandCount = parts.filter((part) => isCommandToolPart(part)).length;
+  const eventCount = parts.length;
+  if (commandCount > 0) {
+    return `${eventCount} Event${eventCount === 1 ? "" : "s"} · ${commandCount} Command${commandCount === 1 ? "" : "s"}`;
+  }
+  return `${eventCount} Event${eventCount === 1 ? "" : "s"}`;
+}
+
 function buildMessageDisplayItems(parts: AIPart[]): MessageDisplayItem[] {
   const items: MessageDisplayItem[] = [];
   let i = 0;
@@ -908,6 +933,25 @@ function buildMessageDisplayItems(parts: AIPart[]): MessageDisplayItem[] {
         key: `exploration-group-${String((runParts[0] as any).id || runStart)}`,
         parts: runParts,
       });
+      continue;
+    }
+    if (isCommandToolPart(part)) {
+      const runStart = i;
+      while (i < parts.length && isCommandToolPart(parts[i])) i += 1;
+      const runParts = parts.slice(runStart, i);
+      if (runParts.length > 1) {
+        items.push({
+          kind: "command-run-group",
+          key: `command-run-group-${String((runParts[0] as any).id || runStart)}`,
+          parts: runParts,
+        });
+      } else {
+        items.push({
+          kind: "part",
+          key: String((runParts[0] as any).id || `part-${runStart}`),
+          part: runParts[0],
+        });
+      }
       continue;
     }
     if (isGroupablePart(part)) {
@@ -1031,6 +1075,16 @@ function MessageBubble({
               pendingPermission={pendingPermission}
               onPermissionReply={onPermissionReply}
             />
+          ) : item.kind === "command-run-group" ? (
+            <CommandRunGroup
+              commandParts={item.parts}
+              colors={colors}
+              fonts={fonts}
+              radius={radius}
+              showDetailedView={showDetailedView}
+              pendingPermission={pendingPermission}
+              onPermissionReply={onPermissionReply}
+            />
           ) : item.kind === "exploration-group" ? (
             <ExplorationGroup
               parts={item.parts}
@@ -1078,7 +1132,10 @@ function partHasTextOutput(part: AIPart | undefined | null) {
 }
 
 function getDisplayItemSpacingStyle(previous: MessageDisplayItem, current: MessageDisplayItem, styles: any) {
-  if (previous.kind === "command-group" && current.kind === "command-group") {
+  if (
+    (previous.kind === "command-group" || previous.kind === "command-run-group")
+    && (current.kind === "command-group" || current.kind === "command-run-group")
+  ) {
     return styles.messagePartSpacingGroups;
   }
   if (previous.kind === "exploration-group" || current.kind === "exploration-group") {
@@ -1096,7 +1153,13 @@ function getDisplayItemSpacingStyle(previous: MessageDisplayItem, current: Messa
 }
 
 function itemHasTextOutput(item: MessageDisplayItem) {
-  if (item.kind === "command-group" || item.kind === "exploration-group") return false;
+  if (
+    item.kind === "command-group"
+    || item.kind === "command-run-group"
+    || item.kind === "exploration-group"
+  ) {
+    return false;
+  }
   return partHasTextOutput(item.part);
 }
 
@@ -1201,6 +1264,65 @@ function CommandPartsDropdown({
         <View style={styles.commandGroupBody}>
           {commandParts.map((part, index) => (
             <View key={String((part as any).id || `command-part-${index}`)} style={styles.groupListRowWrap}>
+              <MessagePartView
+                part={part}
+                isUser={false}
+                colors={colors}
+                fonts={fonts}
+                radius={radius}
+                showDetailedView={showDetailedView}
+                pendingPermission={pendingPermission}
+                onPermissionReply={onPermissionReply}
+                groupedRow
+              />
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function CommandRunGroup({
+  commandParts,
+  colors,
+  fonts,
+  radius,
+  showDetailedView,
+  pendingPermission,
+  onPermissionReply,
+}: {
+  commandParts: AIPart[];
+  colors: any;
+  fonts: any;
+  radius: any;
+  showDetailedView: boolean;
+  pendingPermission?: AIPermission | null;
+  onPermissionReply?: (response: PermissionResponse) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const label = buildCommandGroupLabel(commandParts);
+
+  return (
+    <View style={styles.commandGroupContainer}>
+      <TouchableOpacity
+        onPress={() => setExpanded((value) => !value)}
+        activeOpacity={0.7}
+        style={[styles.commandGroupHeader, expanded ? { backgroundColor: colors.bg.raised } : null]}
+      >
+        <View style={styles.commandGroupHeaderLeft}>
+          <View style={[styles.commandGroupIconFrame, { borderColor: `${colors.fg.subtle}4D` }]}>
+            <SquaresSubtract size={15} color={colors.fg.muted} strokeWidth={2} />
+          </View>
+          <Text style={{ color: colors.fg.muted, fontSize: typography.subHeading, fontFamily: fonts.sans.medium, flex: 1 }}>
+            {label}
+          </Text>
+        </View>
+      </TouchableOpacity>
+      {expanded ? (
+        <View style={styles.commandGroupBody}>
+          {commandParts.map((part, index) => (
+            <View key={String((part as any).id || `command-run-part-${index}`)} style={styles.groupListRowWrap}>
               <MessagePartView
                 part={part}
                 isUser={false}
