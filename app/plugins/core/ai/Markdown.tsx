@@ -5,6 +5,7 @@ import RNMarkdown from "react-native-markdown-display";
 import {
   Text,
   View,
+  ScrollView,
   TouchableOpacity,
   StyleSheet,
 } from "react-native";
@@ -295,18 +296,21 @@ export default function Markdown({ children, compact = false }: { children: stri
               />
             </View>
             {/* Code content */}
-            <Text
-              style={{
-                color: colors.fg.default,
-                fontFamily: fonts.mono.regular,
-                fontSize: 12,
-                lineHeight: 18,
-                padding: 12,
-              }}
-              selectable
-            >
-              {code}
-            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} bounces={false}>
+              <Text
+                style={{
+                  color: colors.fg.default,
+                  fontFamily: fonts.mono.regular,
+                  fontSize: 12,
+                  lineHeight: 18,
+                  padding: 12,
+                  minWidth: "100%" as any,
+                }}
+                selectable
+              >
+                {code}
+              </Text>
+            </ScrollView>
           </View>
         );
       },
@@ -341,18 +345,21 @@ export default function Markdown({ children, compact = false }: { children: stri
                 radius={radius}
               />
             </View>
-            <Text
-              style={{
-                color: colors.fg.default,
-                fontFamily: fonts.mono.regular,
-                fontSize: 12,
-                lineHeight: 18,
-                padding: 12,
-              }}
-              selectable
-            >
-              {code}
-            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} bounces={false}>
+              <Text
+                style={{
+                  color: colors.fg.default,
+                  fontFamily: fonts.mono.regular,
+                  fontSize: 12,
+                  lineHeight: 18,
+                  padding: 12,
+                  minWidth: "100%" as any,
+                }}
+                selectable
+              >
+                {code}
+              </Text>
+            </ScrollView>
           </View>
         );
       },

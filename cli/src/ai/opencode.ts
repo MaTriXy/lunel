@@ -45,6 +45,261 @@ function requireData<T>(response: { data?: T; error?: unknown }, label: string):
   return response.data;
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? value as Record<string, unknown> : {};
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function normalizeToolOutput(output: string, metadata: Record<string, unknown>): string {
+  const attachments = Array.isArray(metadata.attachments) ? metadata.attachments : [];
+  if (attachments.length === 0) return output;
+
+  const attachmentLines = attachments
+    .map((entry) => {
+      const file = asRecord(entry);
+      const filename = readString(file.filename)
+        ?? readString(file.path)
+        ?? readString(file.url)
+        ?? "attachment";
+      return `- ${filename}`;
+    })
+    .filter((line) => line.trim().length > 0);
+
+  if (attachmentLines.length === 0) return output;
+  if (!output.trim()) {
+    return `Attachments:\n${attachmentLines.join("\n")}`;
+  }
+  return `${output}\n\nAttachments:\n${attachmentLines.join("\n")}`;
+}
+
+function buildPatchSummary(part: Record<string, unknown>): string {
+  const hash = readString(part.hash);
+  const files = Array.isArray(part.files)
+    ? part.files.map((value) => String(value)).filter((value) => value.trim().length > 0)
+    : [];
+  const lines: string[] = [];
+  if (hash) lines.push(`Patch hash: ${hash}`);
+  if (files.length > 0) {
+    lines.push("Files:");
+    for (const file of files) lines.push(`- ${file}`);
+  }
+  return lines.join("\n");
+}
+
+function normalizeOpenCodePart(part: unknown): Record<string, unknown> {
+  const raw = asRecord(part);
+  const type = readString(raw.type);
+  if (!type) return raw;
+
+  if (type === "tool") {
+    const tool = readString(raw.tool) ?? "tool";
+    const state = asRecord(raw.state);
+    const status = readString(state.status) ?? "running";
+    const metadata = asRecord(state.metadata ?? raw.metadata);
+    const normalized: Record<string, unknown> = {
+      ...raw,
+      type: "tool",
+      toolName: tool,
+      name: tool,
+      state: status,
+      input: asRecord(state.input),
+      metadata,
+    };
+
+    const title = readString(state.title);
+    if (title) normalized.title = title;
+
+    const rawText = readString(state.raw);
+    if (rawText) normalized.raw = rawText;
+
+    const time = asRecord(state.time);
+    if (Object.keys(time).length > 0) {
+      normalized.time = time;
+    }
+
+    if (status === "completed") {
+      const output = typeof state.output === "string" ? state.output : "";
+      normalized.output = normalizeToolOutput(output, {
+        ...metadata,
+        attachments: state.attachments,
+      });
+    } else if (status === "error") {
+      normalized.error = readString(state.error) ?? "Tool failed";
+      const errorMessage = readString(state.error);
+      if (errorMessage) normalized.output = errorMessage;
+    }
+
+    const attachments = Array.isArray(state.attachments) ? state.attachments : [];
+    if (attachments.length > 0) {
+      normalized.attachments = attachments.map((entry) => normalizeOpenCodePart(entry));
+    }
+
+    return normalized;
+  }
+
+  if (type === "step-start") {
+    const snapshot = readString(raw.snapshot);
+    return {
+      ...raw,
+      type: "step-start",
+      title: snapshot ? `Step started · ${snapshot}` : "Step started",
+    };
+  }
+
+  if (type === "step-finish") {
+    const reason = readString(raw.reason);
+    return {
+      ...raw,
+      type: "step-finish",
+      title: reason ? `Step finished · ${reason}` : "Step finished",
+    };
+  }
+
+  if (type === "patch") {
+    return {
+      ...raw,
+      type: "file-change",
+      title: "File changes",
+      output: buildPatchSummary(raw),
+    };
+  }
+
+  if (type === "subtask") {
+    return {
+      ...raw,
+      type: "tool",
+      toolName: "subtask",
+      name: "subtask",
+      state: "completed",
+      input: {
+        prompt: readString(raw.prompt) ?? "",
+        description: readString(raw.description) ?? "",
+        agent: readString(raw.agent) ?? "",
+        ...(readString(raw.command) ? { command: readString(raw.command) } : {}),
+      },
+      output: readString(raw.description) ?? readString(raw.prompt) ?? "Subtask requested",
+    };
+  }
+
+  if (type === "agent") {
+    const name = readString(raw.name) ?? "Agent";
+    return {
+      ...raw,
+      type: "step-start",
+      title: `Agent · ${name}`,
+    };
+  }
+
+  if (type === "retry") {
+    const attempt = raw.attempt;
+    const error = asRecord(raw.error);
+    const message = readString(error.message) ?? "Retry requested";
+    return {
+      ...raw,
+      type: "tool",
+      toolName: "retry",
+      name: "retry",
+      state: "error",
+      input: {
+        attempt,
+      },
+      error: message,
+      output: message,
+    };
+  }
+
+  if (type === "compaction") {
+    const auto = raw.auto === true;
+    const overflow = raw.overflow === true;
+    return {
+      ...raw,
+      type: "step-start",
+      title: `Context compacted${auto ? " · auto" : ""}${overflow ? " · overflow" : ""}`,
+    };
+  }
+
+  if (type === "snapshot") {
+    return {
+      ...raw,
+      type: "step-start",
+      title: "Workspace snapshot",
+    };
+  }
+
+  return raw;
+}
+
+function normalizeOpenCodeMessage(message: {
+  info: Record<string, unknown>;
+  parts: unknown[];
+}): MessageInfo {
+  return {
+    id: message.info.id as string,
+    role: message.info.role as string,
+    parts: (message.parts || []).map((part) => normalizeOpenCodePart(part)),
+    time: message.info.time,
+  };
+}
+
+function normalizePermissionProperties(properties: Record<string, unknown>): Record<string, unknown> {
+  const tool = asRecord(properties.tool);
+  const metadata = properties.metadata && typeof properties.metadata === "object"
+    ? properties.metadata as Record<string, unknown>
+    : properties;
+
+  return {
+    id: readString(properties.id),
+    sessionID: readString(properties.sessionID) ?? readString(properties.sessionId),
+    messageID: readString(properties.messageID) ?? readString(tool.messageID),
+    callID: readString(properties.callID) ?? readString(tool.callID),
+    type: readString(properties.type) ?? readString(properties.permission) ?? "permission",
+    title: readString(properties.title)
+      ?? readString(properties.permission)
+      ?? "Permission requested",
+    metadata,
+  };
+}
+
+function normalizeOpenCodeEvent(event: { type: string; properties: Record<string, unknown> }): { type: string; properties: Record<string, unknown> } {
+  const { type, properties } = event;
+
+  if (type === "message.part.updated") {
+    return {
+      type,
+      properties: {
+        ...properties,
+        part: normalizeOpenCodePart(properties.part),
+      },
+    };
+  }
+
+  if (type === "permission.updated" || type === "permission.asked") {
+    return {
+      type: "permission.updated",
+      properties: normalizePermissionProperties(properties),
+    };
+  }
+
+  if (type === "permission.replied") {
+    return {
+      type: "permission.replied",
+      properties: {
+        sessionID: readString(properties.sessionID) ?? readString(properties.sessionId),
+        permissionId: readString(properties.permissionID)
+          ?? readString(properties.requestID)
+          ?? readString(properties.permissionId)
+          ?? readString(properties.id),
+        response: readString(properties.response) ?? readString(properties.reply),
+      },
+    };
+  }
+
+  return event;
+}
+
 export class OpenCodeProvider implements AIProvider {
   private client: ReturnType<typeof createOpencodeClient> | null = null;
   private server: Awaited<ReturnType<typeof createOpencodeServer>> | null = null;
@@ -175,12 +430,7 @@ export class OpenCodeProvider implements AIProvider {
         info: Record<string, unknown>;
         parts: unknown[];
       }>;
-      const messages = raw.map((m) => ({
-        id: m.info.id as string,
-        role: m.info.role as string,
-        parts: m.parts || [],
-        time: m.info.time,
-      }));
+      const messages = raw.map((m) => normalizeOpenCodeMessage(m));
       if (VERBOSE_AI_LOGS) console.log("[ai] getMessages returned", messages.length, "messages");
       return { messages };
     } catch (err) {
@@ -414,8 +664,12 @@ export class OpenCodeProvider implements AIProvider {
           if (base.type !== "server.heartbeat") {
             console.log("[sse]", base.type);
           }
-          this.trackPermissionEvent(base.type, base.properties || {});
-          this.emitter?.({ type: base.type, properties: base.properties || {} });
+          const normalizedEvent = normalizeOpenCodeEvent({
+            type: base.type,
+            properties: base.properties || {},
+          });
+          this.trackPermissionEvent(normalizedEvent.type, normalizedEvent.properties || {});
+          this.emitter?.(normalizedEvent);
         }
 
         console.log("[sse] Event stream ended, reconnecting...");
@@ -528,7 +782,7 @@ export class OpenCodeProvider implements AIProvider {
           this.emitter?.({ type: "message.updated", properties: { info } });
 
           for (const part of parts) {
-            const partObj = this.asRecord(part as Record<string, unknown>);
+            const partObj = normalizeOpenCodePart(part);
             this.emitter?.({
               type: "message.part.updated",
               properties: {
@@ -586,19 +840,7 @@ export class OpenCodeProvider implements AIProvider {
       this.knownPendingPermissionIds.add(id);
       this.emitter?.({
         type: "permission.updated",
-        properties: {
-          id,
-          sessionID: this.readString(permission.sessionID) ?? this.readString(permission.sessionId),
-          messageID: this.readString(this.asRecord(permission.tool).messageID),
-          callID: this.readString(this.asRecord(permission.tool).callID),
-          type: this.readString(permission.permission) ?? "permission",
-          title: this.readString(permission.title)
-            ?? this.readString(permission.permission)
-            ?? "Permission requested",
-          metadata: permission.metadata && typeof permission.metadata === "object"
-            ? permission.metadata as Record<string, unknown>
-            : permission,
-        },
+        properties: normalizePermissionProperties(permission),
       });
     }
 
@@ -720,7 +962,7 @@ export class OpenCodeProvider implements AIProvider {
 
   private trackPermissionEvent(type: string, properties: Record<string, unknown>): void {
     if (type === "permission.updated") {
-      const id = this.readString(properties.id);
+      const id = readString(properties.id);
       if (id) {
         this.knownPendingPermissionIds.add(id);
       }
@@ -728,16 +970,16 @@ export class OpenCodeProvider implements AIProvider {
     }
 
     if (type === "permission.replied") {
-      const id = this.readString(properties.permissionId)
-        ?? this.readString(properties.requestID)
-        ?? this.readString(properties.id);
+      const id = readString(properties.permissionId)
+        ?? readString(properties.requestID)
+        ?? readString(properties.id);
       if (id) {
         this.knownPendingPermissionIds.delete(id);
       }
     }
 
     if (type === "question.asked") {
-      const id = this.readString(properties.id);
+      const id = readString(properties.id);
       if (id) {
         this.knownPendingQuestionIds.add(id);
       }
@@ -745,20 +987,20 @@ export class OpenCodeProvider implements AIProvider {
     }
 
     if (type === "question.replied" || type === "question.rejected") {
-      const id = this.readString(properties.requestID)
-        ?? this.readString(properties.questionId)
-        ?? this.readString(properties.id);
+      const id = readString(properties.requestID)
+        ?? readString(properties.questionId)
+        ?? readString(properties.id);
       if (id) {
         this.knownPendingQuestionIds.delete(id);
       }
     }
   }
 
-  private asRecord(value: unknown): Record<string, unknown> {
-    return value && typeof value === "object" ? value as Record<string, unknown> : {};
+  private readString(value: unknown): string | undefined {
+    return readString(value);
   }
 
-  private readString(value: unknown): string | undefined {
-    return typeof value === "string" && value.length > 0 ? value : undefined;
+  private asRecord(value: unknown): Record<string, unknown> {
+    return asRecord(value);
   }
 }

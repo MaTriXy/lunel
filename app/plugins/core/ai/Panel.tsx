@@ -730,10 +730,115 @@ function deriveActivityLabelFromPart(part: AIPart): string | null {
 
 type MessageDisplayItem =
   | { kind: "part"; key: string; part: AIPart }
-  | { kind: "command-group"; key: string; parts: AIPart[] };
+  | { kind: "command-group"; key: string; parts: AIPart[] }
+  | { kind: "exploration-group"; key: string; parts: AIPart[] };
+
+function getPartToolName(part: AIPart): string {
+  return String(part.name || part.toolName || "").trim().toLowerCase();
+}
+
+function getToolInputRecord(part: AIPart): Record<string, unknown> {
+  return part.input && typeof part.input === "object"
+    ? part.input as Record<string, unknown>
+    : {};
+}
+
+function readToolInputString(input: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = input[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return "";
+}
+
+function getExplorationKind(part: AIPart): "read" | "search" | null {
+  if (part.type !== "tool" && part.type !== "tool-call" && part.type !== "tool-result") return null;
+  const toolName = getPartToolName(part);
+  if (!toolName) return null;
+
+  if (
+    toolName.includes("read")
+    || toolName.includes("open_file")
+    || toolName.includes("openfile")
+    || toolName.includes("view_file")
+    || toolName.includes("cat")
+  ) {
+    return "read";
+  }
+
+  if (
+    toolName.includes("glob")
+    || toolName.includes("search")
+    || toolName.includes("grep")
+    || toolName.includes("find")
+    || toolName.includes("ls")
+    || toolName.includes("tree")
+    || toolName.includes("list")
+  ) {
+    return "search";
+  }
+
+  return null;
+}
+
+function isExplorationPart(part: AIPart): boolean {
+  return getExplorationKind(part) !== null;
+}
+
+function formatExplorationEntry(part: AIPart): string | null {
+  const kind = getExplorationKind(part);
+  if (!kind) return null;
+
+  const toolName = getPartToolName(part);
+  const input = getToolInputRecord(part);
+  const path = readToolInputString(input, ["path", "file_path", "filePath", "dir", "directory", "cwd"]);
+  const pattern = readToolInputString(input, ["pattern", "glob", "query", "search", "needle"]);
+
+  if (kind === "read") {
+    const label = path || pattern;
+    return label ? `Read  ${label}` : "Read";
+  }
+
+  if (toolName.includes("glob")) {
+    if (path && pattern) return `Glob  ${path} / pattern=${pattern}`;
+    if (pattern) return `Glob  pattern=${pattern}`;
+    if (path) return `Glob  ${path}`;
+    return "Glob";
+  }
+
+  if (toolName.includes("grep") || toolName.includes("search") || toolName.includes("find")) {
+    if (path && pattern) return `Search  ${path} / pattern=${pattern}`;
+    if (pattern) return `Search  pattern=${pattern}`;
+    if (path) return `Search  ${path}`;
+    return "Search";
+  }
+
+  if (toolName.includes("tree") || toolName === "ls" || toolName.includes("list")) {
+    return path ? `Browse  ${path}` : "Browse";
+  }
+
+  return path || pattern ? `${toolName}  ${path || pattern}` : toolName;
+}
+
+function buildExplorationSummary(parts: AIPart[]): string {
+  const readEntries = new Set<string>();
+  const searchEntries = new Set<string>();
+  for (const part of parts) {
+    const kind = getExplorationKind(part);
+    const line = formatExplorationEntry(part) ?? String((part as any).id || "");
+    if (kind === "read") readEntries.add(line);
+    else if (kind === "search") searchEntries.add(line);
+  }
+  const labels: string[] = [];
+  if (readEntries.size > 0) labels.push(`${readEntries.size} read${readEntries.size === 1 ? "" : "s"}`);
+  if (searchEntries.size > 0) labels.push(`${searchEntries.size} search${searchEntries.size === 1 ? "" : "es"}`);
+  return labels.length > 0 ? `Explored  ${labels.join(", ")}` : "Explored";
+}
 
 function isGroupablePart(part: AIPart): boolean {
-  return part.type !== "text" && part.type !== "file";
+  return part.type === "reasoning" || part.type === "step-start" || part.type === "step-finish";
 }
 
 function buildToolGroupLabel(parts: AIPart[]): string {
@@ -754,6 +859,17 @@ function buildMessageDisplayItems(parts: AIPart[]): MessageDisplayItem[] {
   let i = 0;
   while (i < parts.length) {
     const part = parts[i];
+    if (isExplorationPart(part)) {
+      const runStart = i;
+      while (i < parts.length && isExplorationPart(parts[i])) i += 1;
+      const runParts = parts.slice(runStart, i);
+      items.push({
+        kind: "exploration-group",
+        key: `exploration-group-${String((runParts[0] as any).id || runStart)}`,
+        parts: runParts,
+      });
+      continue;
+    }
     if (isGroupablePart(part)) {
       const runStart = i;
       while (i < parts.length && isGroupablePart(parts[i])) i += 1;
@@ -816,11 +932,12 @@ function MessageBubble({
     if (text) await Clipboard.setStringAsync(text);
   };
 
-  if (isUser) {
-    const localStatus = typeof message.metadata?.localStatus === "string" ? message.metadata.localStatus : undefined;
-    const isSending = localStatus === "sending" || (localStatus == null && message.id.startsWith("opt-"));
-    return (
-      <View style={{ alignSelf: "flex-end", alignItems: "flex-end", marginVertical: 7 }}>
+      if (isUser) {
+        const localStatus = typeof message.metadata?.localStatus === "string" ? message.metadata.localStatus : undefined;
+        const isSending = localStatus === "sending" || (localStatus == null && message.id.startsWith("opt-"));
+        const safeParts = parts.filter((part): part is AIPart => !!part && typeof part === "object");
+        return (
+          <View style={{ alignSelf: "flex-end", alignItems: "flex-end", marginVertical: 7 }}>
         <TouchableOpacity
           onLongPress={handleCopy}
           activeOpacity={0.8}
@@ -832,8 +949,8 @@ function MessageBubble({
             },
           ]}
         >
-          {parts.map((part, i) => (
-            <View key={i} style={i > 0 ? getMessagePartSpacingStyle(parts[i - 1], part, styles) : undefined}>
+          {safeParts.map((part, i) => (
+            <View key={i} style={i > 0 ? getMessagePartSpacingStyle(safeParts[i - 1], part, styles) : undefined}>
               <MessagePartView
                 part={part}
                 isUser={true}
@@ -874,6 +991,12 @@ function MessageBubble({
               pendingPermission={pendingPermission}
               onPermissionReply={onPermissionReply}
             />
+          ) : item.kind === "exploration-group" ? (
+            <ExplorationGroup
+              parts={item.parts}
+              colors={colors}
+              fonts={fonts}
+            />
           ) : (
             <MessagePartView
               part={item.part}
@@ -892,8 +1015,8 @@ function MessageBubble({
   );
 }
 
-function getMessagePartSpacingStyle(previous: AIPart | undefined, current: AIPart, styles: any) {
-  if (!previous) return undefined;
+function getMessagePartSpacingStyle(previous: AIPart | undefined, current: AIPart | undefined, styles: any) {
+  if (!previous || !current) return undefined;
 
   const previousHasTextOutput = partHasTextOutput(previous);
   const currentHasTextOutput = partHasTextOutput(current);
@@ -905,7 +1028,8 @@ function getMessagePartSpacingStyle(previous: AIPart | undefined, current: AIPar
   return styles.messagePartSpacingTight;
 }
 
-function partHasTextOutput(part: AIPart) {
+function partHasTextOutput(part: AIPart | undefined | null) {
+  if (!part || typeof part !== "object") return false;
   if (part.type === "text" || part.type === "reasoning") return true;
   if ((part.type === "tool" || part.type === "tool-call" || part.type === "tool-result" || part.type === "file-change") && typeof part.output === "string") {
     return part.output.trim().length > 0;
@@ -916,6 +1040,9 @@ function partHasTextOutput(part: AIPart) {
 function getDisplayItemSpacingStyle(previous: MessageDisplayItem, current: MessageDisplayItem, styles: any) {
   if (previous.kind === "command-group" && current.kind === "command-group") {
     return styles.messagePartSpacingGroups;
+  }
+  if (previous.kind === "exploration-group" || current.kind === "exploration-group") {
+    return styles.messagePartSpacingLoose;
   }
 
   const previousHasTextOutput = itemHasTextOutput(previous);
@@ -929,8 +1056,62 @@ function getDisplayItemSpacingStyle(previous: MessageDisplayItem, current: Messa
 }
 
 function itemHasTextOutput(item: MessageDisplayItem) {
-  if (item.kind === "command-group") return false;
+  if (item.kind === "command-group" || item.kind === "exploration-group") return false;
   return partHasTextOutput(item.part);
+}
+
+function ExplorationGroup({
+  parts,
+  colors,
+  fonts,
+}: {
+  parts: AIPart[];
+  colors: any;
+  fonts: any;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const summary = buildExplorationSummary(parts);
+  const entries = useMemo(() => {
+    const seen = new Set<string>();
+    const lines: string[] = [];
+    for (const part of parts) {
+      const line = formatExplorationEntry(part);
+      if (!line || seen.has(line)) continue;
+      seen.add(line);
+      lines.push(line);
+    }
+    return lines;
+  }, [parts]);
+
+  return (
+    <View style={styles.commandGroupContainer}>
+      <TouchableOpacity
+        onPress={() => setExpanded((value) => !value)}
+        activeOpacity={0.7}
+        style={[styles.commandGroupHeader, { backgroundColor: colors.bg.raised, borderRadius: 8 }]}
+      >
+        <View style={styles.commandGroupHeaderLeft}>
+          <SquaresSubtract size={13} color={colors.fg.muted} strokeWidth={2} />
+          <Text style={{ color: colors.fg.default, fontSize: 12, fontFamily: fonts.sans.medium }}>
+            {summary}
+          </Text>
+        </View>
+        <InlineChevronIcon size={14} color={colors.fg.muted} expanded={expanded} />
+      </TouchableOpacity>
+      {expanded ? (
+        <View style={styles.explorationGroupBody}>
+          {entries.map((line, index) => (
+            <Text
+              key={`${line}:${index}`}
+              style={{ color: colors.fg.muted, fontSize: 12, fontFamily: fonts.mono.regular }}
+            >
+              {line}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
 }
 
 function CommandPartsDropdown({
@@ -1039,7 +1220,7 @@ function MessagePartView({
     case "reasoning":
       return <ReasoningPartView part={part} />;
     case "step-start":
-      return <StepStartView part={part} />;
+      return null;
     case "step-finish":
       return <StepFinishView part={part} showDetailedView={showDetailedView} />;
     default:
@@ -1930,6 +2111,24 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
               };
             });
           }
+          break;
+        }
+        case "message.part.removed": {
+          const sessId = (props.sessionID as string) || (props.sessionId as string);
+          const msgId = props.messageID as string | undefined;
+          const partId = (props.partID as string) || (props.partId as string);
+          if (!sessId || !msgId || !partId) break;
+          setMessagesMap((prev) => {
+            const existing = prev[sessId] || [];
+            const msgIdx = existing.findIndex((m) => m.id === msgId);
+            if (msgIdx < 0) return prev;
+            const updated = [...existing];
+            updated[msgIdx] = {
+              ...updated[msgIdx],
+              parts: (updated[msgIdx].parts || []).filter((part) => (part as any).id !== partId),
+            };
+            return { ...prev, [sessId]: updated };
+          });
           break;
         }
         case "session.updated": {
@@ -2986,6 +3185,7 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
         if (idx < 0) return prev;
         const updated = [...sessionMessages];
         const existing = updated[idx];
+        if (!existing) return prev;
         const committedAt = existing.time?.created ?? existing.time?.updated ?? optimisticCreatedAt;
         updated[idx] = {
           ...existing,
@@ -4095,6 +4295,12 @@ const styles = StyleSheet.create({
   commandGroupBody: {
     marginTop: 4,
     gap: 4,
+  },
+  explorationGroupBody: {
+    marginTop: 4,
+    gap: 10,
+    paddingLeft: 18,
+    paddingTop: 2,
   },
 
   // Reasoning

@@ -109,6 +109,15 @@ function extractCommandPreview(input: unknown): string | null {
   return typeof command === "string" ? command.trim() : null;
 }
 
+function isCommandLikeTool(toolName: string): boolean {
+  const normalized = toolName.trim().toLowerCase();
+  return normalized === "command"
+    || normalized.includes("bash")
+    || normalized.includes("shell")
+    || normalized.includes("terminal")
+    || normalized.includes("exec");
+}
+
 function DiffViewer({
   outputText,
   colors,
@@ -182,53 +191,62 @@ function DiffViewer({
 
             {expanded ? (
               <View style={[styles.diffCodeWrap, { borderTopColor: colors.bg.raised }]}>
-                {chunk.diffCode.split("\n").map((line, index) => {
-                  const kind = classifyDiffLine(line);
-                  const textColor = kind === "addition"
-                    ? '#22c55e'
-                    : kind === "deletion"
-                      ? '#ef4444'
-                      : kind === "hunk"
-                        ? colors.fg.subtle
-                        : kind === "meta"
-                          ? colors.fg.muted
-                          : colors.fg.default;
-                  const backgroundColor = kind === "addition"
-                    ? `${'#22c55e'}1A`
-                    : kind === "deletion"
-                      ? `${'#ef4444'}1A`
-                      : "transparent";
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  bounces={false}
+                  contentContainerStyle={styles.diffScrollContent}
+                >
+                  <View style={styles.diffCodeContent}>
+                    {chunk.diffCode.split("\n").map((line, index) => {
+                      const kind = classifyDiffLine(line);
+                      const textColor = kind === "addition"
+                        ? '#22c55e'
+                        : kind === "deletion"
+                          ? '#ef4444'
+                          : kind === "hunk"
+                            ? colors.fg.subtle
+                            : kind === "meta"
+                              ? colors.fg.muted
+                              : colors.fg.default;
+                      const backgroundColor = kind === "addition"
+                        ? `${'#22c55e'}1A`
+                        : kind === "deletion"
+                          ? `${'#ef4444'}1A`
+                          : "transparent";
 
-                  if (kind === "meta") {
-                    return null;
-                  }
+                      if (kind === "meta") {
+                        return null;
+                      }
 
-                  return (
-                    <View
-                      key={`${chunk.id}:${index}`}
-                      style={[styles.diffLineRow, { backgroundColor }]}
-                    >
-                      <View
-                        style={[
-                          styles.diffIndicator,
-                          {
-                            backgroundColor: kind === "addition"
-                              ? '#22c55e'
-                              : kind === "deletion"
-                                ? '#ef4444'
-                                : "transparent",
-                          },
-                        ]}
-                      />
-                      <Text
-                        selectable
-                        style={{ flex: 1, color: textColor, fontSize: 11, fontFamily: fonts.mono.regular, lineHeight: 16, paddingHorizontal: 10, paddingVertical: 1 }}
-                      >
-                        {line || " "}
-                      </Text>
-                    </View>
-                  );
-                })}
+                      return (
+                        <View
+                          key={`${chunk.id}:${index}`}
+                          style={[styles.diffLineRow, { backgroundColor }]}
+                        >
+                          <View
+                            style={[
+                              styles.diffIndicator,
+                              {
+                                backgroundColor: kind === "addition"
+                                  ? '#22c55e'
+                                  : kind === "deletion"
+                                    ? '#ef4444'
+                                    : "transparent",
+                              },
+                            ]}
+                          />
+                          <Text
+                            selectable
+                            style={{ color: textColor, fontSize: 11, fontFamily: fonts.mono.regular, lineHeight: 16, paddingHorizontal: 10, paddingVertical: 1, minWidth: "100%" as any }}
+                          >
+                            {line || " "}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
               </View>
             ) : null}
           </View>
@@ -260,8 +278,8 @@ export default function ToolCall({
   const [expanded, setExpanded] = useState(false);
 
   const toolName = (part.name as string) || (part.toolName as string) || "tool";
-  const commandPreview = toolName === "command" ? extractCommandPreview(part.input) : null;
-  const isCommandRow = toolName === "command" && !!commandPreview;
+  const commandPreview = isCommandLikeTool(toolName) ? extractCommandPreview(part.input) : null;
+  const isCommandRow = !!commandPreview;
   const headerLabel = commandPreview || toolName;
   const state = (part.state as string) || "running";
 
@@ -565,6 +583,12 @@ const styles = StyleSheet.create({
   diffLineRow: {
     flexDirection: "row",
     alignItems: "stretch",
+  },
+  diffScrollContent: {
+    minWidth: "100%",
+  },
+  diffCodeContent: {
+    minWidth: "100%",
   },
   diffIndicator: {
     width: 2,
