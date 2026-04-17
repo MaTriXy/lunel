@@ -2277,7 +2277,7 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
           const nextTabs = reconcileSessionTabs(prev, sessions as AISession[]);
           setActiveTabId((prevActive) => {
             if (!prevActive) return prevActive;
-            return nextTabs.some((t) => t.id === prevActive)
+            return nextTabs.some((t) => t.id === prevActive) || draftTabs.some((t) => t.id === prevActive)
               ? prevActive
               : (nextTabs[nextTabs.length - 1]?.id ?? null);
           });
@@ -2292,7 +2292,7 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
     return () => {
       cancelled = true;
     };
-  }, [status, isInitialized, isActive, drawerStatus, ai]);
+  }, [status, isInitialized, isActive, drawerStatus, ai, draftTabs]);
 
   useEffect(() => {
     if (!isDrawerOpen) return;
@@ -2423,22 +2423,39 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
   };
 
   const createNewTabWithBackend = async (backend: "opencode" | "codex") => {
+    const previousActiveTabId = activeTabId;
+    const draftTabId = `draft-${backend}-${Date.now().toString(36)}`;
+    const draftTab: AITab = {
+      id: draftTabId,
+      title: formatBackendSessionTitle(backend),
+      backend,
+      updatedAt: Date.now(),
+    };
+
+    setBackendPickerVisible(false);
+    setPendingBackend(null);
+    setDraftTabs((prev) => [...prev, draftTab]);
+    setMessagesMap((prev) => ({ ...prev, [draftTabId]: prev[draftTabId] || [] }));
+    setActiveTabId(draftTabId);
+    setInputText("");
+    setPendingImage(null);
+
     try {
       const availableBackends = await ai.getBackends();
       if (!availableBackends.includes(backend)) {
-        setBackendPickerVisible(false);
+        setDraftTabs((prev) => prev.filter((tab) => tab.id !== draftTabId));
+        setMessagesMap((prev) => {
+          const next = { ...prev };
+          delete next[draftTabId];
+          return next;
+        });
+        setActiveTabId((prev) => (prev === draftTabId ? previousActiveTabId : prev));
         showBackendMissingInstallAlert(backend);
         return;
       }
     } catch {
       // If backend discovery fails, we still allow the flow and handle errors on session creation.
     }
-
-    setBackendPickerVisible(false);
-    setPendingBackend(backend);
-    setActiveTabId(null);
-    setInputText("");
-    setPendingImage(null);
   };
 
   const closeTab = (tabId: string) => {
@@ -3260,11 +3277,14 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
   }, [messagesBottomInset, hasContent, scrollToLatest]);
 
   useEffect(() => {
-    // Include backend on each session item so DrawerContent can group them
-    const sessionItems = tabs.map((t) => ({ id: t.id, title: t.title, backend: t.backend }));
+    // Only register persisted sessions in the sidebar. Draft tabs should stay local
+    // to the panel until the user actually sends the first prompt.
+    const sessionItems = tabs
+      .filter((t) => !!t.sessionId)
+      .map((t) => ({ id: t.id, title: t.title, backend: t.backend }));
     register('ai', {
       sessions: sessionItems,
-      activeSessionId: activeTabId,
+      activeSessionId: tabs.some((t) => t.id === activeTabId && !!t.sessionId) ? activeTabId : null,
       loading: status === 'connected' && (!isInitialized || isInitialSessionsLoading),
       onSessionPress: handleTabPress,
       onSessionClose: closeTab,
