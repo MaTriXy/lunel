@@ -476,7 +476,8 @@ function UserText({ text }: { text: string }) {
 function ReasoningPartView({ part }: { part: AIPart }) {
   const { colors, fonts, radius } = useTheme();
   const [expanded, setExpanded] = useState(false);
-  const text = (part.text as string) || (typeof part.reasoning === "string" ? part.reasoning : "");
+  const text = ((part.text as string) || (typeof part.reasoning === "string" ? part.reasoning : "")).trim();
+  if (!text) return null;
 
   return (
     <View style={styles.reasoningContainer}>
@@ -838,7 +839,11 @@ function buildExplorationSummary(parts: AIPart[]): string {
 }
 
 function isGroupablePart(part: AIPart): boolean {
-  return part.type === "reasoning" || part.type === "step-start" || part.type === "step-finish";
+  if (part.type === "reasoning") {
+    const text = ((part.text as string) || (typeof part.reasoning === "string" ? part.reasoning : "")).trim();
+    return text.length > 0;
+  }
+  return part.type === "step-start" || part.type === "step-finish";
 }
 
 function buildToolGroupLabel(parts: AIPart[]): string {
