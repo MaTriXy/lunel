@@ -106,6 +106,7 @@ export class CodexProvider implements AIProvider {
   private proc: ChildProcess | null = null;
   private shuttingDown = false;
   private emitter: AiEventEmitter | null = null;
+  private defaultModelContextWindow: number | null = null;
 
   private nextId = 1;
   private pending = new Map<string, PendingRpc>();
@@ -147,6 +148,9 @@ export class CodexProvider implements AIProvider {
     });
 
     await this.call("initialize", { clientInfo: { name: "lunel", version: "1.0" } });
+    await this.refreshConfigDefaults().catch(() => {
+      // Config defaults are best-effort metadata only.
+    });
     if (DEBUG_MODE) console.log("Codex ready.\n");
   }
 
@@ -311,6 +315,18 @@ export class CodexProvider implements AIProvider {
       cwd: this.extractThreadCwd(threadObject) ?? session.cwd,
     });
 
+    if (this.defaultModelContextWindow && this.defaultModelContextWindow > 0) {
+      this.emitter?.({
+        type: "session.usage",
+        properties: {
+          sessionID: sessionId,
+          tokenUsage: {
+            modelContextWindow: this.defaultModelContextWindow,
+          },
+        },
+      });
+    }
+
     return { messages: session.messages };
   }
 
@@ -327,7 +343,7 @@ export class CodexProvider implements AIProvider {
 
     (async () => {
       try {
-        await this.ensureThreadResumed(session.id);
+        await this.ensureThreadResumed(session.id, true, codexOptions);
         let imageUrlKey: "url" | "image_url" = "url";
         while (true) {
           try {
@@ -619,6 +635,18 @@ export class CodexProvider implements AIProvider {
           this.emitter?.({
             type: "session.status",
             properties: { sessionID: session.id, status: { type: "running" } },
+          });
+        }
+        return;
+
+      case "thread/tokenUsage/updated":
+        if (session) {
+          this.emitter?.({
+            type: "session.usage",
+            properties: {
+              sessionID: session.id,
+              tokenUsage: params.tokenUsage ?? null,
+            },
           });
         }
         return;
@@ -969,6 +997,23 @@ export class CodexProvider implements AIProvider {
     return this.fetchServerThreadsByArchiveState(false);
   }
 
+  private async refreshConfigDefaults(): Promise<void> {
+    const result = await this.call("config/read", undefined);
+    const payload = this.asRecord(result);
+    const config = this.asRecord(payload.config ?? result);
+    const raw = config.model_context_window;
+    if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) {
+      this.defaultModelContextWindow = raw;
+      return;
+    }
+    if (typeof raw === "string" && raw.trim()) {
+      const parsed = Number(raw);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        this.defaultModelContextWindow = parsed;
+      }
+    }
+  }
+
   private async refreshSessionMetadata(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     const result = await this.call("thread/read", {
@@ -1185,7 +1230,7 @@ export class CodexProvider implements AIProvider {
     return this.upsertSession({ id: sessionId, title: "Conversation", createdAt: Date.now(), updatedAt: Date.now() });
   }
 
-  private async ensureThreadResumed(threadId: string, force = false): Promise<void> {
+  private async ensureThreadResumed(threadId: string, force = false, codexOptions?: CodexPromptOptions): Promise<void> {
     if (!threadId || this.resumedThreadIds.has(threadId)) {
       if (!force) return;
     }
@@ -1195,6 +1240,9 @@ export class CodexProvider implements AIProvider {
     if (session?.cwd) {
       params.cwd = session.cwd;
     }
+    const permissionMode = codexOptions?.permissionMode ?? "default";
+    params.approvalPolicy = permissionMode === "full-access" ? "never" : null;
+    params.sandbox = permissionMode === "full-access" ? "danger-full-access" : null;
 
     const result = await this.call("thread/resume", params);
     const payload = this.asRecord(result);

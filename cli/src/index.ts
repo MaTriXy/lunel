@@ -2985,7 +2985,7 @@ async function processMessage(message: Message): Promise<Response> {
               payload.model as { providerID: string; modelID: string } | undefined,
               payload.agent as string | undefined,
               payload.files as Array<{ type: "file"; mime: string; filename?: string; url: string }> | undefined,
-              payload.codexOptions as { reasoningEffort?: "low" | "medium" | "high"; speed?: "fast" | "balanced" | "quality" } | undefined,
+              payload.codexOptions as { reasoningEffort?: "low" | "medium" | "high"; speed?: "fast" | "balanced" | "quality"; permissionMode?: "default" | "full-access" } | undefined,
             );
             break;
           case "createSession":  result = await aiManager.createSession(backend, payload.title as string | undefined); break;

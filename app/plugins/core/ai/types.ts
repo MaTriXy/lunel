@@ -23,6 +23,7 @@ export interface ModelRef {
 export interface CodexPromptOptions {
   reasoningEffort?: "low" | "medium" | "high";
   speed?: "fast" | "balanced" | "quality";
+  permissionMode?: "default" | "full-access";
 }
 
 export interface AIFileAttachment {
