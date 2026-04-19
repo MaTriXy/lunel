@@ -10,6 +10,7 @@ import { typography } from "@/constants/themes";
 import { useConnection } from "@/contexts/ConnectionContext";
 import { useEditorConfig } from "@/contexts/EditorContext";
 import { useAI } from "@/hooks/useAI";
+import { useApi, FileEntry } from "@/hooks/useApi";
 import type { AIEvent, AISession, AIMessage, AIPart, AIAgent, AIProvider, AIPermission, AIQuestion, AIFileAttachment, ModelRef, PermissionResponse, AiBackend, CodexPromptOptions } from "./types";
 import Markdown from "./Markdown";
 import ToolCall from "./ToolCall";
@@ -17,7 +18,7 @@ import FileChange from "./FileChange";
 import {
   Sparkle, Sparkles, Check, X, Plus,
   Hammer, Map as MapIcon, Square, AlertTriangle, Key,
-  EllipsisVertical, ChevronDown, LoaderCircle, SquaresSubtract, Search, BookOpen, SlidersHorizontal, Mic, PieChart,
+  EllipsisVertical, ChevronDown, LoaderCircle, SquaresSubtract, Search, BookOpen, SlidersHorizontal, Mic, PieChart, File,
 } from "lucide-react-native";
 import { Canvas, Circle } from "@shopify/react-native-skia";
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -239,6 +240,64 @@ function sameMessagesShape(a: AIMessage[] | undefined, b: AIMessage[]): boolean 
   return true;
 }
 
+function mergeMessagePartsPreservingRichState(existingParts: AIPart[] = [], incomingParts: AIPart[] = []): AIPart[] {
+  if (existingParts.length === 0) return incomingParts;
+  if (incomingParts.length === 0) return existingParts;
+
+  const merged = [...existingParts];
+
+  for (const incomingPart of incomingParts) {
+    const incomingId = typeof (incomingPart as any).id === "string" ? (incomingPart as any).id : undefined;
+    const existingIndex = incomingId
+      ? merged.findIndex((part) => (part as any).id === incomingId)
+      : findStreamingPartIndex(merged, incomingPart);
+
+    if (existingIndex >= 0) {
+      merged[existingIndex] = mergePartUpdate(merged[existingIndex], incomingPart, {
+        replaceText: true,
+      });
+      continue;
+    }
+
+    merged.push(incomingPart);
+  }
+
+  return merged;
+}
+
+function mergeMessagesPreservingRichState(existing: AIMessage[] = [], incoming: AIMessage[] = []): AIMessage[] {
+  if (existing.length === 0) return incoming;
+  if (incoming.length === 0) return existing;
+
+  const mergedById = new Map<string, AIMessage>();
+  const orderedIds: string[] = [];
+
+  for (const message of existing) {
+    mergedById.set(message.id, message);
+    orderedIds.push(message.id);
+  }
+
+  for (const message of incoming) {
+    const previous = mergedById.get(message.id);
+    if (!previous) {
+      mergedById.set(message.id, message);
+      orderedIds.push(message.id);
+      continue;
+    }
+
+    mergedById.set(message.id, {
+      ...previous,
+      ...message,
+      parts: mergeMessagePartsPreservingRichState(previous.parts || [], message.parts || []),
+      time: message.time ?? previous.time,
+    });
+  }
+
+  return orderedIds
+    .map((id) => mergedById.get(id))
+    .filter((message): message is AIMessage => Boolean(message));
+}
+
 function inferImageMime(uri: string, providedMime?: string | null): string {
   if (providedMime && providedMime.trim().length > 0) {
     return providedMime;
@@ -458,7 +517,8 @@ function TextPartView({ part, isUser }: { part: AIPart; isUser: boolean }) {
 
   if (isUser) {
     // User messages: plain text (no markdown), styled for accent bg
-    return <UserText text={text} />;
+    const displayText = text.replace(/<file path="[^"]*">[\s\S]*?<\/file>\n*/g, "").trim();
+    return <UserText text={displayText} />;
   }
   // Assistant messages: full markdown rendering
   return <Markdown>{text}</Markdown>;
@@ -2047,6 +2107,7 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
   const { settings } = useAppSettings();
   const headerHeight = useHeaderHeight();
   const { status, sessionState } = useConnection();
+  const { fs } = useApi();
   const { register, unregister } = useSessionRegistryActions();
   const drawerStatus = useDrawerStatus();
   const isDrawerOpen = drawerStatus === "open";
@@ -2099,6 +2160,11 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
   const [codexPermissionAnchor, setCodexPermissionAnchor] = useState<{ x: number; width: number } | null>(null);
   const [codexContextUsageAnchor, setCodexContextUsageAnchor] = useState<{ x: number; width: number } | null>(null);
   const [pendingImage, setPendingImage] = useState<AIFileAttachment | null>(null);
+  const [atMentionActive, setAtMentionActive] = useState(false);
+  const [atMentionQuery, setAtMentionQuery] = useState("");
+  const [allWorkspaceFiles, setAllWorkspaceFiles] = useState<string[]>([]);
+  const [workspaceFilesLoading, setWorkspaceFilesLoading] = useState(false);
+  const [taggedFiles, setTaggedFiles] = useState<{ path: string; name: string }[]>([]);
   const [streamingBySession, setStreamingBySession] = useState<Record<string, true>>({});
   const [codexUsageBySession, setCodexUsageBySession] = useState<Record<string, { used?: number; total?: number }>>({});
   const [pendingPermission, setPendingPermission] = useState<AIPermission | null>(null);
@@ -2675,7 +2741,17 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
       const msgs = await ai.getMessages(sessionId, backend);
       if (!Array.isArray(msgs)) return;
       setMessagesMap((prev) => {
-        const next = msgs as AIMessage[];
+        const incoming = msgs as AIMessage[];
+        const next = backend === "codex"
+          ? incoming.map((msg) => {
+              const existingMsg = (prev[sessionId] || []).find((m) => m.id === msg.id);
+              if (!existingMsg) return msg;
+              return {
+                ...msg,
+                parts: mergeMessagePartsPreservingRichState(existingMsg.parts || [], msg.parts || []),
+              };
+            })
+          : incoming;
         if (!force && sameMessagesShape(prev[sessionId], next)) {
           return prev;
         }
@@ -3240,8 +3316,29 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
 
   // Send message / handle slash commands
   const sendMessage = async (rawText?: string) => {
-    const text = (rawText ?? inputText).trim();
+    let text = (rawText ?? inputText).trim();
     if (!text && !pendingImage) return;
+    const displayText = text;
+
+    // Inject @mentioned file contents as context
+    const mentionMatches = [...text.matchAll(/@([\w.\-]+)/g)];
+    if (mentionMatches.length > 0) {
+      const fileSections: string[] = [];
+      for (const match of mentionMatches) {
+        const mentionedName = match[1];
+        const filePath = allWorkspaceFiles.find((p) => (p.split("/").pop() ?? p) === mentionedName);
+        if (!filePath) continue;
+        try {
+          const fileContent = await fs.read(filePath);
+          if (fileContent.encoding === "utf8") {
+            fileSections.push(`<file path="${filePath}">\n${fileContent.content}\n</file>`);
+          }
+        } catch {}
+      }
+      if (fileSections.length > 0) {
+        text = fileSections.join("\n\n") + "\n\n" + text;
+      }
+    }
 
     if (rawText == null) {
       setInputText("");
@@ -3379,8 +3476,8 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
           url: pendingImage.url,
         });
       }
-      if (text) {
-        optimisticParts.push({ type: "text", text } as AIPart);
+      if (displayText) {
+        optimisticParts.push({ type: "text", text: displayText } as AIPart);
       }
       const optimisticMsg: AIMessage = {
         id: optimisticMessageId,
@@ -3471,13 +3568,74 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
     });
   }, [inputHeight, inputHeightSV]);
 
+  const loadWorkspaceFiles = useCallback(async () => {
+    if (workspaceFilesLoading) return;
+    setWorkspaceFilesLoading(true);
+    const IGNORED = new Set(["node_modules", ".git", ".next", "dist", "build", ".expo", "__pycache__", ".DS_Store"]);
+    const paths: string[] = [];
+    const walk = async (dir: string, depth: number) => {
+      if (depth > 5) return;
+      try {
+        const entries = await fs.list(dir);
+        for (const entry of entries) {
+          const fullPath = dir === "." ? entry.name : `${dir}/${entry.name}`;
+          if (IGNORED.has(entry.name)) continue;
+          if (entry.type === "file") {
+            paths.push(fullPath);
+          } else if (entry.type === "directory") {
+            await walk(fullPath, depth + 1);
+          }
+        }
+      } catch {}
+    };
+    await walk(".", 0);
+    setAllWorkspaceFiles(paths);
+    setWorkspaceFilesLoading(false);
+  }, [fs, workspaceFilesLoading]);
+
+  // Pre-load workspace files when connected
+  useEffect(() => {
+    if (status === "connected" && allWorkspaceFiles.length === 0 && !workspaceFilesLoading) {
+      loadWorkspaceFiles();
+    }
+  }, [status, allWorkspaceFiles.length, workspaceFilesLoading, loadWorkspaceFiles]);
+
   const handleInputChange = useCallback((text: string) => {
     setInputText(text);
-    // Keep composer height stable when input is fully cleared.
     if (text.length === 0) {
       animateInputHeight(52);
+      setAtMentionActive(false);
+      setAtMentionQuery("");
+      return;
     }
-  }, [animateInputHeight]);
+    const atIdx = text.lastIndexOf("@");
+    if (atIdx !== -1) {
+      const afterAt = text.slice(atIdx + 1);
+      if (!afterAt.includes(" ") && !afterAt.includes("\n")) {
+        if (allWorkspaceFiles.length === 0) loadWorkspaceFiles();
+        setAtMentionQuery(afterAt);
+        setAtMentionActive(true);
+        return;
+      }
+    }
+    setAtMentionActive(false);
+    setAtMentionQuery("");
+  }, [animateInputHeight, allWorkspaceFiles, loadWorkspaceFiles]);
+
+  const selectFileMention = useCallback((filePath: string) => {
+    const fileName = filePath.split("/").pop() ?? filePath;
+    setInputText((prev) => {
+      const atIdx = prev.lastIndexOf("@");
+      if (atIdx === -1) return prev;
+      return prev.slice(0, atIdx) + `@${fileName} `;
+    });
+    setAtMentionActive(false);
+    setAtMentionQuery("");
+  }, []);
+
+  const removeTaggedFile = useCallback((path: string) => {
+    setTaggedFiles((prev) => prev.filter((f) => f.path !== path));
+  }, []);
 
   const enterVoiceMode = useCallback(async () => {
     if (isVoiceBusy) return;
@@ -4012,6 +4170,74 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
               style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: composerBottomOffset + 24 }}
               pointerEvents="none"
             />
+            {/* @ file mention dropdown */}
+            {atMentionActive && (() => {
+              const query = atMentionQuery.toLowerCase();
+              const filtered = allWorkspaceFiles.filter((p) => p.toLowerCase().includes(query));
+              if (!workspaceFilesLoading && filtered.length === 0) return null;
+              return (
+                <View style={{
+                  position: "absolute",
+                  bottom: composerBottomOffset + 18,
+                  left: 8,
+                  right: 8,
+                  backgroundColor: colors.bg.raised,
+                  borderRadius: 10,
+                  borderWidth: 0.5,
+                  borderColor: colors.border.secondary,
+                  zIndex: 1000,
+                  maxHeight: 260,
+                  paddingVertical: 6,
+                  shadowColor: "#000",
+                  shadowOpacity: 0.15,
+                  shadowRadius: 8,
+                  shadowOffset: { width: 0, height: -2 },
+                }}>
+                  {workspaceFilesLoading && filtered.length === 0 ? (
+                    <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 12, gap: 10 }}>
+                      <ActivityIndicator size="small" color={colors.fg.subtle} />
+                      <Text style={{ color: colors.fg.subtle, fontFamily: fonts.sans.regular, fontSize: 13 }}>Loading files...</Text>
+                    </View>
+                  ) : (
+                    <ScrollView
+                      keyboardShouldPersistTaps="handled"
+                      showsVerticalScrollIndicator={true}
+                      style={{ borderRadius: 10 }}
+                    >
+                      {filtered.map((filePath) => {
+                        const parts = filePath.split("/");
+                        const fileName = parts.pop() ?? filePath;
+                        const dir = parts.join("/");
+                        return (
+                          <TouchableOpacity
+                            key={filePath}
+                            onPress={() => selectFileMention(filePath)}
+                            activeOpacity={0.7}
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              marginHorizontal: 6,
+                              marginVertical: 2,
+                              paddingHorizontal: 10,
+                              paddingVertical: 9,
+                              gap: 10,
+                              borderRadius: 8,
+                              backgroundColor: colors.bg.elevated + "60",
+                            }}
+                          >
+                            <File size={14} color={colors.fg.subtle} />
+                            <Text style={{ flex: 1, fontFamily: fonts.sans.regular, fontSize: 13 }} numberOfLines={1}>
+                              <Text style={{ color: colors.fg.default }}>{fileName}</Text>
+                              {dir ? <Text style={{ color: colors.fg.subtle, fontSize: typography.caption }}>{`  •  ${dir}`}</Text> : null}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  )}
+                </View>
+              );
+            })()}
             <View style={{ position: "relative" }}>
             {!isVoiceMode ? (
             <GestureDetector gesture={swipeDownGesture}>
@@ -4041,7 +4267,7 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
                     fontFamily: fonts.sans.regular,
                   },
                 ]}
-                placeholder="Ask anything..."
+                placeholder="Ask, Plan, @ for file context"
                 placeholderTextColor={colors.fg.subtle}
                 value={inputText}
                 editable={!isVoiceMode}
@@ -4293,7 +4519,11 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 0, flexGrow: 0 }}>
                     <TouchableOpacity
                       style={styles.actionButton}
-                      onPress={enterVoiceMode}
+                      onPress={() => {
+                        setAtMentionActive(false);
+                        setAtMentionQuery("");
+                        enterVoiceMode();
+                      }}
                       disabled={isVoiceBusy}
                       activeOpacity={0.7}
                     >
