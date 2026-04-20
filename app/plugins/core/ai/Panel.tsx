@@ -2,7 +2,7 @@ import Header, { BaseTab, useHeaderHeight } from "@/components/Header";
 import InfoSheet from "@/components/InfoSheet";
 import Loading from "@/components/Loading";
 import { LinearGradient } from "expo-linear-gradient";
-import { Codex, OpenCode, ClaudeCode } from "@lobehub/icons-rn";
+import { Codex, OpenCode, ClaudeCode, Gemini, Cursor } from "@lobehub/icons-rn";
 import { useAppSettings } from "@/contexts/AppSettingsContext";
 import { useSessionRegistryActions } from "@/contexts/SessionRegistry";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -188,6 +188,25 @@ function showBackendMissingInstallAlert(backend: AiBackend): void {
 
 function sortTabsByUpdatedAt(tabs: AITab[]): AITab[] {
   return [...tabs].sort((a, b) => (a.updatedAt ?? 0) - (b.updatedAt ?? 0));
+}
+
+function renderColorfulBrandIcon(
+  Icon: React.ComponentType<any>,
+  size: number,
+  fallbackColor: string,
+) {
+  const BrandIcon = Icon as any;
+  if (BrandIcon?.Color) {
+    return React.createElement(BrandIcon.Color, { size });
+  }
+  if (BrandIcon?.Avatar) {
+    return React.createElement(BrandIcon.Avatar, {
+      size,
+      shape: "square",
+      iconMultiple: 0.72,
+    });
+  }
+  return React.createElement(Icon, { size, color: fallbackColor });
 }
 
 function mergeSessionTabs(existingTabs: AITab[], incomingSessions: AISession[]): AITab[] {
@@ -3961,6 +3980,8 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
             { backend: "codex" as const, label: "Codex", description: "OpenAI Codex CLI", Icon: Codex },
             { backend: "opencode" as const, label: "OpenCode", description: "The open source AI coding agent", Icon: OpenCode },
             { label: "Claude Code", description: "Coming soon", disabled: true, Icon: ClaudeCode },
+            { label: "Gemini", description: "Coming soon", disabled: true, Icon: Gemini },
+            { label: "Cursor", description: "Coming soon", disabled: true, Icon: Cursor },
           ].map(({ backend, label, description, disabled, Icon }) => (
             <TouchableOpacity
               key={backend ?? label}
@@ -3978,7 +3999,7 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
                 opacity: disabled ? 0.55 : 1,
               }]}
             >
-              <Icon size={24} color={colors.fg.default} />
+              {renderColorfulBrandIcon(Icon as React.ComponentType<any>, 28, colors.fg.default)}
               <View>
                 <Text style={{ color: colors.fg.default, fontSize: typography.body, fontFamily: fonts.sans.medium }}>
                   {label}
