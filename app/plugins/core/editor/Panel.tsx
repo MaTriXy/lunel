@@ -10,7 +10,7 @@ import { useApi } from "@/hooks/useApi";
 import { logger } from "@/lib/logger";
 import { usePlugins } from "@/plugins/context";
 import * as Haptics from "expo-haptics";
-import { ChevronDown, ChevronUp, File, Folder, Keyboard as KeyboardIcon, Search, Star, X } from "lucide-react-native";
+import { ChevronDown, ChevronUp, File, Folder, Keyboard as KeyboardIcon, Save, Search, Star, X } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
@@ -449,6 +449,22 @@ export default function EditorPanel({ bottomBarHeight: _bottomBarHeight }: Plugi
     }, AUTOSAVE_DELAY_MS);
   }, [clearSaveTimer, saveTabContent]);
 
+  useEffect(() => {
+    if (!config.autoSave) {
+      Object.values(saveTimeoutsRef.current).forEach(clearTimeout);
+      saveTimeoutsRef.current = {};
+      return;
+    }
+
+    for (const tab of tabsRef.current) {
+      if (!tab.isDirty || tab.isDeleted || tab.isLoading || tab.loadError) {
+        continue;
+      }
+
+      scheduleSave(tab.id);
+    }
+  }, [config.autoSave, scheduleSave]);
+
   const updateTabContent = useCallback((tabId: string, content: string) => {
     const currentTab = tabsRef.current.find((tab) => tab.id === tabId);
     if (!currentTab || currentTab.isDeleted || currentTab.isLoading || !!currentTab.loadError) {
@@ -472,12 +488,12 @@ export default function EditorPanel({ bottomBarHeight: _bottomBarHeight }: Plugi
       })
     );
 
-    if (shouldScheduleSave) {
+    if (shouldScheduleSave && config.autoSave) {
       scheduleSave(tabId);
     } else {
       clearSaveTimer(tabId);
     }
-  }, [clearSaveTimer, scheduleSave]);
+  }, [clearSaveTimer, config.autoSave, scheduleSave]);
 
   const openFile = useCallback(async (filePath: string) => {
     const existingTab = tabsRef.current.find((tab) => tab.path === filePath);
@@ -947,14 +963,37 @@ export default function EditorPanel({ bottomBarHeight: _bottomBarHeight }: Plugi
     `);
   }, []);
 
-  const handleDismissKeyboard = useCallback(() => {
+  const handleKeyboardButtonPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (isKeyboardVisible) {
+      webViewRef.current?.injectJavaScript(`
+        window.__lunelBlurEditor && window.__lunelBlurEditor();
+        true;
+      `);
+      Keyboard.dismiss();
+      return;
+    }
+
     webViewRef.current?.injectJavaScript(`
-      window.__lunelBlurEditor && window.__lunelBlurEditor();
+      window.__lunelFocusEditor && window.__lunelFocusEditor();
       true;
     `);
-    Keyboard.dismiss();
-  }, []);
+  }, [isKeyboardVisible]);
+
+  const handleManualSave = useCallback(() => {
+    if (!activeTabId) {
+      return;
+    }
+
+    const tab = tabsRef.current.find((candidate) => candidate.id === activeTabId);
+    if (!tab || tab.isDeleted || tab.isLoading || tab.loadError || tab.isSaving || !tab.isDirty) {
+      return;
+    }
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    clearSaveTimer(activeTabId);
+    void saveTabContent(activeTabId);
+  }, [activeTabId, clearSaveTimer, saveTabContent]);
 
   const handleReviewPress = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -1045,7 +1084,7 @@ export default function EditorPanel({ bottomBarHeight: _bottomBarHeight }: Plugi
                 onChangeText={handleSearchQueryChange}
                 placeholder="Search..."
                 placeholderTextColor={colors.fg.subtle}
-                style={[styles.searchInput, { color: colors.fg.default, backgroundColor: colors.bg.raised, fontFamily: fonts.mono.regular }]}
+                style={[styles.searchInput, { color: colors.fg.default, backgroundColor: colors.bg.raised, fontFamily: fonts.sans.regular }]}
                 autoCorrect={false}
                 autoCapitalize="none"
                 returnKeyType="search"
@@ -1084,7 +1123,7 @@ export default function EditorPanel({ bottomBarHeight: _bottomBarHeight }: Plugi
                   onChangeText={handleReplaceQueryChange}
                   placeholder="Replace with..."
                   placeholderTextColor={colors.fg.subtle}
-                  style={[styles.searchInput, { color: colors.fg.default, backgroundColor: colors.bg.raised, fontFamily: fonts.mono.regular }]}
+                  style={[styles.searchInput, { color: colors.fg.default, backgroundColor: colors.bg.raised, fontFamily: fonts.sans.regular }]}
                   autoCorrect={false}
                   autoCapitalize="none"
                   returnKeyType="done"
@@ -1173,11 +1212,34 @@ export default function EditorPanel({ bottomBarHeight: _bottomBarHeight }: Plugi
             </View>
           )}
         </View>
-        {isKeyboardVisible ? (
-          <Animated.View pointerEvents="box-none" style={[styles.keyboardDismissOverlay, keyboardDismissButtonStyle]}>
+        {activeTab && (isKeyboardVisible || !config.autoSave) ? (
+          <Animated.View
+            pointerEvents="box-none"
+            style={[
+              styles.keyboardDismissOverlay,
+              isKeyboardVisible ? keyboardDismissButtonStyle : null,
+            ]}
+          >
+            {!config.autoSave ? (
+              <TouchableOpacity
+                onPress={handleManualSave}
+                disabled={!activeTab.isDirty || activeTab.isSaving || activeTab.isDeleted || activeTab.isLoading || !!activeTab.loadError}
+                style={[
+                  styles.floatingActionButton,
+                  {
+                    backgroundColor: colors.bg.raised,
+                    borderColor: colors.border.secondary,
+                    opacity: !activeTab.isDirty || activeTab.isSaving || activeTab.isDeleted || activeTab.isLoading || !!activeTab.loadError ? 0.45 : 1,
+                  },
+                ]}
+                activeOpacity={0.7}
+              >
+                <Save size={20} color={colors.fg.muted} strokeWidth={2} />
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity
-              onPress={handleDismissKeyboard}
-              style={{ backgroundColor: colors.bg.raised, borderColor: colors.border.secondary, borderWidth: 0.5, borderRadius: 999, width: 45, height: 45, alignItems: "center", justifyContent: "center" }}
+              onPress={handleKeyboardButtonPress}
+              style={[styles.floatingActionButton, { backgroundColor: colors.bg.raised, borderColor: colors.border.secondary }]}
               activeOpacity={0.7}
             >
               <KeyboardIcon size={22} color={colors.fg.muted} strokeWidth={2} />
@@ -1211,6 +1273,17 @@ const styles = StyleSheet.create({
     right: 12,
     bottom: 12,
     zIndex: 100,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  floatingActionButton: {
+    borderWidth: 0.5,
+    borderRadius: 999,
+    width: 45,
+    height: 45,
+    alignItems: "center",
+    justifyContent: "center",
   },
   headerAction: {
     paddingHorizontal: 10,

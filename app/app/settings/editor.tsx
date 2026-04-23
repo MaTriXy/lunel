@@ -160,6 +160,12 @@ export default function EditorSettingsPage() {
             value={config.wrapLines}
             onValueChange={(value) => updateConfig("wrapLines", value)}
           />
+          <ToggleRow
+            label="Auto Save"
+            description="Automatically save file changes as you type"
+            value={config.autoSave}
+            onValueChange={(value) => updateConfig("autoSave", value)}
+          />
         </View>
 
         {/* Bottom padding */}
