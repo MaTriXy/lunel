@@ -833,10 +833,10 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
         icon={selectedItem ? <EntryIcon item={selectedItem} colors={colors} size={26} /> : undefined}
       >
         <ScrollView
-          contentContainerStyle={{ gap: spacing[4], paddingBottom: spacing[2] }}
+          contentContainerStyle={{ gap: spacing[2], paddingBottom: spacing[1] }}
           keyboardDismissMode="on-drag"
         >
-          <View style={{ flexDirection: 'row', gap: spacing[4] }}>
+          <View style={{ flexDirection: 'row', gap: spacing[3] }}>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: typography.caption, fontFamily: fonts.sans.medium, color: 'rgba(255,255,255,0.4)', marginBottom: 4 }}>
                 Size
@@ -855,10 +855,10 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
             </View>
           </View>
 
-          <View style={{ gap: spacing[2] }}>
+          <View style={{ gap: spacing[2], marginTop: spacing[2] }}>
             {selectedItemIsBinary !== true ? (
               <TouchableOpacity
-                style={[styles.sheetRow, { borderRadius: radius.xl, backgroundColor: colors.accent.default, marginBottom: 0 }]}
+                style={[styles.sheetRow, { borderRadius: 10, backgroundColor: colors.accent.default, marginBottom: 0 }]}
                 onPress={() => { if (selectedItem) openInEditor(selectedItem); }}
                 activeOpacity={0.7}
               >
@@ -872,7 +872,7 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
 
             {selectedItemIsBinary === true ? (
               <TouchableOpacity
-                style={[styles.sheetRow, { borderRadius: radius.xl, backgroundColor: colors.accent.default, marginBottom: 0 }]}
+                style={[styles.sheetRow, { borderRadius: 10, backgroundColor: colors.accent.default, marginBottom: 0 }]}
                 onPress={() => { if (selectedItem) openWithSystem(selectedItem); }}
                 activeOpacity={0.7}
               >
@@ -884,7 +884,7 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
               </TouchableOpacity>
             ) : null}
 
-            <View style={{ borderRadius: radius.xl, overflow: 'hidden', backgroundColor: colors.bg.raised }}>
+            <View style={{ borderRadius: 10, overflow: 'hidden', backgroundColor: colors.bg.raised }}>
               <TouchableOpacity
                 style={[styles.sheetRow, { marginBottom: 0 }]}
                 onPress={async () => {
@@ -1132,9 +1132,9 @@ const styles = StyleSheet.create({
   sheetRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    marginBottom: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 2,
     gap: 10,
   },
 });

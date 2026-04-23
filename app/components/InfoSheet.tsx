@@ -106,7 +106,7 @@ export default function InfoSheet({ visible, onClose, title, description, icon, 
                         <View style={{
                           width: 42,
                           height: 42,
-                          borderRadius: 8,
+                          borderRadius: 10,
                           backgroundColor: 'rgba(255,255,255,0.08)',
                           alignItems: 'center',
                           justifyContent: 'center',
