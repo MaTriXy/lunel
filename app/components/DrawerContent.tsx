@@ -184,6 +184,34 @@ function TreeIcon({
   );
 }
 
+function SessionFileIcon({
+  fileName,
+  colors,
+}: {
+  fileName: string;
+  colors: any;
+}) {
+  const [iconLoadFailed, setIconLoadFailed] = useState(false);
+  const iconUri = resolveMaterialIconUri({ name: fileName, type: "file" });
+
+  useEffect(() => {
+    setIconLoadFailed(false);
+  }, [iconUri]);
+
+  if (!iconUri || iconLoadFailed) {
+    return <File size={15} color={colors.fg.muted} strokeWidth={2} />;
+  }
+
+  return (
+    <SvgUri
+      width={16}
+      height={16}
+      uri={iconUri}
+      onError={() => setIconLoadFailed(true)}
+    />
+  );
+}
+
 export default function DrawerContent(props: DrawerContentComponentProps) {
   const { colors, fonts, isDark } = useTheme();
   const { status, disconnect } = useConnection();
@@ -685,6 +713,10 @@ export default function DrawerContent(props: DrawerContentComponentProps) {
                           <>
                             {limited.map((item) => {
                               const isActive = item.id === activeSessionId;
+                              const rawFileName = item.title.endsWith(" *")
+                                ? item.title.slice(0, -2)
+                                : item.title;
+                              const showEditorFileIcon = effectivePluginId === "editor";
                               return (
                                 <TouchableOpacity
                                   key={item.id}
@@ -697,6 +729,11 @@ export default function DrawerContent(props: DrawerContentComponentProps) {
                                     },
                                   ]}
                                 >
+                                  {showEditorFileIcon ? (
+                                    <View style={styles.sessionFileIconWrap}>
+                                      <SessionFileIcon fileName={rawFileName} colors={colors} />
+                                    </View>
+                                  ) : null}
                                   <Text
                                     style={[styles.sessionTitle, { color: colors.fg.default, fontFamily: fonts.sans.regular, flex: 1, opacity: isActive ? 1 : 0.8 }]}
                                     numberOfLines={1}
@@ -881,6 +918,11 @@ const styles = StyleSheet.create({
   },
   sessionTitle: {
     fontSize: typography.body,
+  },
+  sessionFileIconWrap: {
+    width: 18,
+    alignItems: "center",
+    justifyContent: "center",
   },
   viewAllRow: {
     flexDirection: "row",
