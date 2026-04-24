@@ -106,23 +106,6 @@ const formatTime = (mtime?: number) => {
   return date.toLocaleDateString();
 };
 
-const getUniqueName = (name: string, existingNames: Set<string>, suffix: string): string => {
-  if (!existingNames.has(name)) return name;
-
-  const dotIndex = name.lastIndexOf('.');
-  const hasExtension = dotIndex > 0;
-  const base = hasExtension ? name.slice(0, dotIndex) : name;
-  const ext = hasExtension ? name.slice(dotIndex) : '';
-
-  let attempt = `${base} ${suffix}${ext}`;
-  let counter = 2;
-  while (existingNames.has(attempt)) {
-    attempt = `${base} ${suffix} ${counter}${ext}`;
-    counter += 1;
-  }
-  return attempt;
-};
-
 const isSameOrChildPath = (sourcePath: string, targetPath: string): boolean => {
   return targetPath === sourcePath || targetPath.startsWith(`${sourcePath}/`);
 };
@@ -991,25 +974,21 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
     if (!copiedFile) return;
     try {
       const sourceContent = await fs.read(copiedFile.path);
-      const existingNames = new Set(items.map((entry) => entry.name));
-      const targetName = getUniqueName(copiedFile.name, existingNames, 'copy');
-      const targetPath = currentPath === '.' ? targetName : `${currentPath}/${targetName}`;
+      const targetPath = currentPath === '.' ? copiedFile.name : `${currentPath}/${copiedFile.name}`;
 
       await fs.write(targetPath, sourceContent.content, sourceContent.encoding, 120000, { source: 'explorer-copy' });
       await loadDirectory(currentPath);
-      Alert.alert('Pasted', `"${targetName}" was pasted into ${currentPath === '.' ? 'the current folder' : currentPath}.`);
+      Alert.alert('Pasted', `"${copiedFile.name}" was pasted into ${currentPath === '.' ? 'the current folder' : currentPath}.`);
     } catch (err) {
       const apiError = err as ApiError;
       Alert.alert('Paste failed', apiError.message || 'Failed to paste file');
     }
-  }, [copiedFile, currentPath, fs, items, loadDirectory]);
+  }, [copiedFile, currentPath, fs, loadDirectory]);
 
   const handlePasteCopiedFolder = useCallback(async () => {
     if (!copiedFolder) return;
     try {
-      const existingNames = new Set(items.map((entry) => entry.name));
-      const targetName = getUniqueName(copiedFolder.name, existingNames, 'copy');
-      const targetPath = currentPath === '.' ? targetName : `${currentPath}/${targetName}`;
+      const targetPath = currentPath === '.' ? copiedFolder.name : `${currentPath}/${copiedFolder.name}`;
 
       if (isSameOrChildPath(copiedFolder.path, targetPath)) {
         Alert.alert('Paste failed', 'Cannot copy a folder into itself.');
@@ -1018,19 +997,17 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
 
       await copyDirectoryRecursive(copiedFolder.path, targetPath);
       await loadDirectory(currentPath);
-      Alert.alert('Pasted', `"${targetName}" was pasted into ${currentPath === '.' ? 'the current folder' : currentPath}.`);
+      Alert.alert('Pasted', `"${copiedFolder.name}" was pasted into ${currentPath === '.' ? 'the current folder' : currentPath}.`);
     } catch (err) {
       const apiError = err as ApiError;
       Alert.alert('Paste failed', apiError.message || 'Failed to paste folder');
     }
-  }, [copiedFolder, copyDirectoryRecursive, currentPath, items, loadDirectory]);
+  }, [copiedFolder, copyDirectoryRecursive, currentPath, loadDirectory]);
 
   const handlePasteMovedFile = useCallback(async () => {
     if (!movedFile) return;
     try {
-      const existingNames = new Set(items.map((entry) => entry.name));
-      const targetName = getUniqueName(movedFile.name, existingNames, 'moved');
-      const targetPath = currentPath === '.' ? targetName : `${currentPath}/${targetName}`;
+      const targetPath = currentPath === '.' ? movedFile.name : `${currentPath}/${movedFile.name}`;
 
       if (targetPath === movedFile.path) {
         Alert.alert('Move skipped', 'File is already in this folder.');
@@ -1040,19 +1017,17 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
       await fs.move(movedFile.path, targetPath);
       setMovedFile(null);
       await loadDirectory(currentPath);
-      Alert.alert('Moved', `"${targetName}" was moved to ${currentPath === '.' ? 'the current folder' : currentPath}.`);
+      Alert.alert('Moved', `"${movedFile.name}" was moved to ${currentPath === '.' ? 'the current folder' : currentPath}.`);
     } catch (err) {
       const apiError = err as ApiError;
       Alert.alert('Move failed', apiError.message || 'Failed to move file');
     }
-  }, [currentPath, fs, items, loadDirectory, movedFile]);
+  }, [currentPath, fs, loadDirectory, movedFile]);
 
   const handlePasteMovedFolder = useCallback(async () => {
     if (!movedFolder) return;
     try {
-      const existingNames = new Set(items.map((entry) => entry.name));
-      const targetName = getUniqueName(movedFolder.name, existingNames, 'moved');
-      const targetPath = currentPath === '.' ? targetName : `${currentPath}/${targetName}`;
+      const targetPath = currentPath === '.' ? movedFolder.name : `${currentPath}/${movedFolder.name}`;
 
       if (targetPath === movedFolder.path) {
         Alert.alert('Move skipped', 'Folder is already in this location.');
@@ -1066,12 +1041,12 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
       await fs.move(movedFolder.path, targetPath);
       setMovedFolder(null);
       await loadDirectory(currentPath);
-      Alert.alert('Moved', `"${targetName}" was moved to ${currentPath === '.' ? 'the current folder' : currentPath}.`);
+      Alert.alert('Moved', `"${movedFolder.name}" was moved to ${currentPath === '.' ? 'the current folder' : currentPath}.`);
     } catch (err) {
       const apiError = err as ApiError;
       Alert.alert('Move failed', apiError.message || 'Failed to move folder');
     }
-  }, [currentPath, fs, items, loadDirectory, movedFolder]);
+  }, [currentPath, fs, loadDirectory, movedFolder]);
 
   // Detect binary/text for selected file to render the correct primary action.
   useEffect(() => {
