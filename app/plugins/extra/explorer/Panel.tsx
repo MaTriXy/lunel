@@ -22,7 +22,6 @@ import {
   CloudOff,
   X,
   ArrowLeft,
-  ArrowLeftRight,
   ListTree,
   Search,
   Settings2,
@@ -1118,6 +1117,22 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
   };
 
   const hasActiveFilters = sortBy !== 'name' || filterBy !== 'all';
+  const switchSearchMode = useCallback((next: SearchMode) => {
+    if (next === searchMode) return;
+    setSearchMode(next);
+    setSearchQuery('');
+    setHasCodebaseSearched(false);
+    setCodebaseResults([]);
+    setCodebaseSearchError(null);
+    setRepoFileSearchResults([]);
+    setRepoFileSearchError(null);
+    setRepoFileSearchLoading(false);
+    setHasFileSearchRun(false);
+    if (next !== 'codebase') {
+      setShowCodebaseOptions(false);
+    }
+  }, [searchMode]);
+
   const resetAndCloseSearch = useCallback(() => {
     setShowSearch(false);
     setSearchFocused(false);
@@ -1415,34 +1430,6 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
                 />
               </TouchableOpacity>
             ) : null}
-            <TouchableOpacity
-              onPress={() => setSearchMode((prev) => {
-                const next = prev === 'files' ? 'codebase' : 'files';
-                setSearchQuery('');
-                setHasCodebaseSearched(false);
-                setCodebaseResults([]);
-                setCodebaseSearchError(null);
-                setRepoFileSearchResults([]);
-                setRepoFileSearchError(null);
-                setRepoFileSearchLoading(false);
-                setHasFileSearchRun(false);
-                if (next !== 'codebase') {
-                  setShowCodebaseOptions(false);
-                }
-                return next;
-              })}
-              activeOpacity={0.7}
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: radius.md,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: colors.bg.raised,
-              }}
-            >
-              <ArrowLeftRight size={16} color={colors.fg.default} strokeWidth={2} />
-            </TouchableOpacity>
           </View>
           {searchMode === 'codebase' && showCodebaseOptions ? (
             <View style={{ marginTop: spacing[2], flexDirection: 'row', alignItems: 'center', gap: spacing[2] }}>
@@ -1515,6 +1502,48 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
               </TouchableOpacity>
             </View>
           ) : null}
+          <View style={{ marginTop: spacing[2], flexDirection: 'row', gap: spacing[2] }}>
+            <TouchableOpacity
+              onPress={() => switchSearchMode('files')}
+              activeOpacity={0.7}
+              style={{
+                flex: 1,
+                height: 36,
+                borderRadius: radius.md,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: searchMode === 'files' ? colors.accent.default : colors.bg.raised,
+              }}
+            >
+              <Text style={{
+                fontSize: typography.caption,
+                fontFamily: fonts.sans.medium,
+                color: searchMode === 'files' ? '#ffffff' : colors.fg.default,
+              }}>
+                Files Search
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => switchSearchMode('codebase')}
+              activeOpacity={0.7}
+              style={{
+                flex: 1,
+                height: 36,
+                borderRadius: radius.md,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: searchMode === 'codebase' ? colors.accent.default : colors.bg.raised,
+              }}
+            >
+              <Text style={{
+                fontSize: typography.caption,
+                fontFamily: fonts.sans.medium,
+                color: searchMode === 'codebase' ? '#ffffff' : colors.fg.default,
+              }}>
+                Codebase Search
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
 
