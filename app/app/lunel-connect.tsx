@@ -32,7 +32,7 @@ import Entypo from "@expo/vector-icons/Entypo";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import * as NavigationBar from "expo-navigation-bar";
-import Svg, { Path } from "react-native-svg";
+import Svg, { Path, Rect } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useConnection } from "../contexts/ConnectionContext";
 import ReAnimated, { useAnimatedStyle, useSharedValue, withSpring, withTiming, runOnJS } from "react-native-reanimated";
@@ -44,6 +44,7 @@ const TABLET_BREAKPOINT = 768;
 const WHITE = "#FFFFFF";
 const BLACK = "#000000";
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+const AnimatedRect = Animated.createAnimatedComponent(Rect);
 
 function CopyableCommand({ command, fonts, colors }: { command: string; fonts: ReturnType<typeof useTheme>["fonts"]; colors: ReturnType<typeof useTheme>["colors"] }) {
   const [copied, setCopied] = useState(false);
@@ -90,8 +91,10 @@ const LunelConnect = () => {
   const [isFocused, setIsFocused] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [showCodeInput, setShowCodeInput] = useState(false);
+  const [learnButtonFrame, setLearnButtonFrame] = useState({ width: 0, height: 0 });
   const keyboardHeight = useSharedValue(0);
   const bottomInset = insets.bottom;
+  const learnBorderProgress = useRef(new Animated.Value(0)).current;
 
   useKeyboardHandler(
     {
@@ -200,9 +203,43 @@ const LunelConnect = () => {
     }
   }, [isConnecting, loaderRotation]);
 
+  useEffect(() => {
+    learnBorderProgress.setValue(0);
+    const loop = Animated.loop(
+      Animated.timing(learnBorderProgress, {
+        toValue: 1,
+        duration: 2400,
+        easing: Easing.linear,
+        useNativeDriver: false,
+      })
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [learnBorderProgress]);
+
   const loaderSpin = loaderRotation.interpolate({
     inputRange: [0, 1],
     outputRange: ["0deg", "360deg"],
+  });
+  const learnBorderInset = 1;
+  const learnSweepStrokeWidth = 1.2;
+  const learnBorderRadius = learnButtonFrame.height > 0 ? learnButtonFrame.height / 2 : 999;
+  const learnSweepWidth = Math.max(1, learnButtonFrame.width - (learnBorderInset * 2));
+  const learnSweepHeight = Math.max(1, learnButtonFrame.height - (learnBorderInset * 2));
+  const learnSweepRadius = Math.max(0, Math.min(learnBorderRadius - learnBorderInset, learnSweepWidth / 2, learnSweepHeight / 2));
+  const learnBorderPerimeter = learnButtonFrame.width > 0 && learnButtonFrame.height > 0
+    ? (() => {
+      const r = learnSweepRadius;
+      const straightW = Math.max(0, learnSweepWidth - (2 * r));
+      const straightH = Math.max(0, learnSweepHeight - (2 * r));
+      return (2 * (straightW + straightH)) + (2 * Math.PI * r);
+    })()
+    : 0;
+  const learnBorderSegment = Math.max(32, learnBorderPerimeter * 0.18);
+  const learnBorderGap = Math.max(1, learnBorderPerimeter - learnBorderSegment);
+  const learnBorderOffset = learnBorderProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -learnBorderPerimeter],
   });
 
   const handleBarCodeScanned = ({ data }: { data: string }) => {
@@ -399,12 +436,40 @@ const LunelConnect = () => {
         <View style={[styles.cliHintRow, { bottom: Math.max(insets.bottom + 20, 40) }]}>
           <TouchableOpacity
             style={styles.learnButton}
+            onLayout={(event) => {
+              const { width: layoutWidth, height: layoutHeight } = event.nativeEvent.layout;
+              setLearnButtonFrame({ width: layoutWidth, height: layoutHeight });
+            }}
             onPress={() => {
               void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               setShowGuide(true);
             }}
             activeOpacity={0.8}
           >
+            {learnButtonFrame.width > 0 && learnButtonFrame.height > 0 && (
+              <Svg
+                pointerEvents="none"
+                width={learnButtonFrame.width}
+                height={learnButtonFrame.height}
+                style={styles.learnButtonBorderOverlay}
+              >
+                <AnimatedRect
+                  x={learnBorderInset}
+                  y={learnBorderInset}
+                  width={learnSweepWidth}
+                  height={learnSweepHeight}
+                  rx={learnSweepRadius}
+                  ry={learnSweepRadius}
+                  fill="none"
+                  stroke="rgba(255,255,255,0.95)"
+                  strokeWidth={learnSweepStrokeWidth}
+                  strokeLinecap="butt"
+                  strokeLinejoin="round"
+                  strokeDasharray={`${learnBorderSegment} ${learnBorderGap}`}
+                  strokeDashoffset={learnBorderOffset as any}
+                />
+              </Svg>
+            )}
             <Entypo name="info-with-circle" size={17} color={WHITE} />
             <Text style={[styles.learnButtonText, { fontSize: typography.body }]}>Learn how to connect</Text>
           </TouchableOpacity>
@@ -643,6 +708,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   learnButton: {
+    position: "relative",
+    overflow: "hidden",
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
@@ -650,8 +717,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     backgroundColor: "rgba(0,0,0,0.45)",
     borderRadius: 999,
-    borderWidth: 0.5,
+    borderWidth: 1,
     borderColor: "rgba(255,255,255,0.18)",
+  },
+  learnButtonBorderOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   learnButtonText: {
     fontSize: 15,
