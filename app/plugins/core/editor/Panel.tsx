@@ -9,7 +9,6 @@ import { monoFamilies } from "@/constants/themes";
 import { useApi } from "@/hooks/useApi";
 import { logger } from "@/lib/logger";
 import { usePlugins } from "@/plugins/context";
-import { useDrawerStatus } from "@react-navigation/drawer";
 import { DrawerActions, useNavigation } from "@react-navigation/native";
 import * as Haptics from "expo-haptics";
 import { ChevronDown, ChevronUp, File, Folder, Keyboard as KeyboardIcon, Save, Search, Star, X } from "lucide-react-native";
@@ -303,14 +302,12 @@ function createEditorHtml({
 export default function EditorPanel({ bottomBarHeight: _bottomBarHeight }: PluginPanelProps) {
   const { colors, fonts, fontSelection, isDark } = useTheme();
   const { fireData, onDataEvent } = useConnection();
-  const { drawerContentVariant, setDrawerContentVariant } = usePlugins();
+  const { openTab, setDrawerContentVariant } = usePlugins();
   const { config } = useEditorConfig();
   const { showEditorReviewButton, requestEditorReview } = useReviewPrompt();
   const { fs } = useApi();
   const { register, unregister } = useSessionRegistryActions();
   const navigation = useNavigation();
-  const drawerStatus = useDrawerStatus();
-  const isFilesDrawerOpen = drawerStatus === "open" && drawerContentVariant === "editor-files";
   const extendedColors = colors as typeof colors & {
     bg?: typeof colors.bg & { overlay?: string };
     accent?: typeof colors.accent & { subtle?: string };
@@ -1005,13 +1002,11 @@ export default function EditorPanel({ bottomBarHeight: _bottomBarHeight }: Plugi
   }, [requestEditorReview]);
 
   const handleFilesButtonPress = useCallback(() => {
-    if (isFilesDrawerOpen) {
-      navigation.dispatch(DrawerActions.closeDrawer());
-      return;
-    }
-    setDrawerContentVariant("editor-files");
-    navigation.dispatch(DrawerActions.openDrawer());
-  }, [isFilesDrawerOpen, navigation, setDrawerContentVariant]);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setDrawerContentVariant("default");
+    navigation.dispatch(DrawerActions.closeDrawer());
+    openTab("explorer");
+  }, [navigation, openTab, setDrawerContentVariant]);
 
   const headerAccessory = useMemo(() => {
     if (!activeTab && !showEditorReviewButton) {
@@ -1055,10 +1050,7 @@ export default function EditorPanel({ bottomBarHeight: _bottomBarHeight }: Plugi
               style={styles.headerAction}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              {isFilesDrawerOpen
-                ? <X size={22} color={colors.fg.muted} strokeWidth={2.2} />
-                : <Folder size={22} color={colors.fg.muted} strokeWidth={2} />
-              }
+              <Folder size={22} color={colors.fg.muted} strokeWidth={2} />
             </TouchableOpacity>
           </>
         ) : null}
@@ -1072,7 +1064,6 @@ export default function EditorPanel({ bottomBarHeight: _bottomBarHeight }: Plugi
     fonts.sans.medium,
     handleFilesButtonPress,
     handleReviewPress,
-    isFilesDrawerOpen,
     isSearchOpen,
     openSearchPanel,
     showEditorReviewButton,

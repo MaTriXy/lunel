@@ -33,6 +33,7 @@ import {
   Undo,
   X,
   Trash2,
+  File,
 } from 'lucide-react-native';
 import Header, { useHeaderHeight } from "@/components/Header";
 import NotConnected from '@/components/NotConnected';
@@ -42,6 +43,8 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { typography } from '@/constants/themes';
 import { useConnection } from '@/contexts/ConnectionContext';
 import { useApi, GitStatus, GitCommit, GitCommitDetails, ApiError } from '@/hooks/useApi';
+import { resolveMaterialIconUri } from '@/plugins/extra/explorer/materialIconTheme';
+import { SvgUri } from 'react-native-svg';
 import { PluginPanelProps } from '../../types';
 
 type Tab = 'changes' | 'history' | 'branches';
@@ -151,6 +154,35 @@ function StatusBadge({ status, fonts, colors }: { status: string; fonts: any; co
     </View>
   );
 }
+
+const GitFileIcon = memo(function GitFileIcon({
+  filePath,
+  colors,
+}: {
+  filePath: string;
+  colors: any;
+}) {
+  const [iconLoadFailed, setIconLoadFailed] = useState(false);
+  const fileName = filePath.split('/').pop() || filePath;
+  const iconUri = resolveMaterialIconUri({ name: fileName, type: 'file' });
+
+  useEffect(() => {
+    setIconLoadFailed(false);
+  }, [iconUri]);
+
+  if (!iconUri || iconLoadFailed) {
+    return <File size={15} color={colors.fg.muted} strokeWidth={2} />;
+  }
+
+  return (
+    <SvgUri
+      width={16}
+      height={16}
+      uri={iconUri}
+      onError={() => setIconLoadFailed(true)}
+    />
+  );
+});
 
 function GitPanel({ instanceId, isActive }: PluginPanelProps) {
   const { colors, fonts, spacing, radius } = useTheme();
@@ -697,10 +729,13 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
                           gap: spacing[2],
                         }}
                       >
-                        <StatusBadge status={file.status} fonts={fonts} colors={colors} />
+                        <View style={{ width: 18, alignItems: 'center', justifyContent: 'center' }}>
+                          <GitFileIcon filePath={file.path} colors={colors} />
+                        </View>
                         <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                           <Text numberOfLines={1} style={{ fontSize: typography.body, fontFamily: fonts.sans.regular, color: colors.fg.default, flexShrink: 1 }}>{name}</Text>
                           {dir.length > 0 && <Text numberOfLines={1} style={{ fontSize: typography.caption, fontFamily: fonts.sans.regular, color: colors.fg.subtle, flexShrink: 2 }}>{dir}</Text>}
+                          <StatusBadge status={file.status} fonts={fonts} colors={colors} />
                         </View>
                         <TouchableOpacity
                           onPress={() => handleUnstage([file.path])}
@@ -752,10 +787,13 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
                           gap: spacing[2],
                         }}
                       >
-                        <StatusBadge status={file.status} fonts={fonts} colors={colors} />
+                        <View style={{ width: 18, alignItems: 'center', justifyContent: 'center' }}>
+                          <GitFileIcon filePath={file.path} colors={colors} />
+                        </View>
                         <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                           <Text numberOfLines={1} style={{ fontSize: typography.body, fontFamily: fonts.sans.regular, color: colors.fg.default, flexShrink: 1 }}>{name}</Text>
                           {dir.length > 0 && <Text numberOfLines={1} style={{ fontSize: typography.caption, fontFamily: fonts.sans.regular, color: colors.fg.subtle, flexShrink: 2 }}>{dir}</Text>}
+                          <StatusBadge status={file.status} fonts={fonts} colors={colors} />
                         </View>
                         <TouchableOpacity
                           onPress={() => handleDiscard([file.path])}
@@ -793,6 +831,9 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
                       >
                         <View style={{ width: 18, height: 18, borderRadius: 4, backgroundColor: '#6b728022', alignItems: 'center', justifyContent: 'center' }}>
                           <Text style={{ fontSize: typography.body, fontFamily: fonts.mono.regular, color: '#9ca3af' }}>?</Text>
+                        </View>
+                        <View style={{ width: 18, alignItems: 'center', justifyContent: 'center' }}>
+                          <GitFileIcon filePath={path} colors={colors} />
                         </View>
                         <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                           <Text numberOfLines={1} style={{ fontSize: typography.body, fontFamily: fonts.sans.regular, color: colors.fg.muted, flexShrink: 1 }}>{name}</Text>
@@ -1246,8 +1287,10 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
                   </View>
                 </View>
                 {selectedCommitDetails.files.map((file, idx) => {
-                  const meta = getStatusMeta(file.status, colors);
                   const isSelected = selectedCommitFile === file.path;
+                  const parts = file.path.split('/');
+                  const name = parts.pop()!;
+                  const dir = parts.join('/');
                   return (
                     <TouchableOpacity
                       key={`${file.path}-${idx}`}
@@ -1263,13 +1306,26 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
                         backgroundColor: isSelected ? colors.git.info + '12' : 'transparent',
                       }}
                     >
-                      <StatusBadge status={file.status} fonts={fonts} colors={colors} />
-                      <Text
-                        style={{ flex: 1, fontSize: 12, fontFamily: fonts.mono.regular, color: isSelected ? colors.git.info : colors.fg.default }}
-                        numberOfLines={1}
-                      >
-                        {file.path}
-                      </Text>
+                      <View style={{ width: 18, alignItems: 'center', justifyContent: 'center' }}>
+                        <GitFileIcon filePath={file.path} colors={colors} />
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text
+                          style={{ fontSize: 12, fontFamily: fonts.mono.regular, color: isSelected ? colors.git.info : colors.fg.default, flexShrink: 1 }}
+                          numberOfLines={1}
+                        >
+                          {name}
+                        </Text>
+                        {dir.length > 0 && (
+                          <Text
+                            numberOfLines={1}
+                            style={{ fontSize: typography.caption, fontFamily: fonts.sans.regular, color: colors.fg.subtle, flexShrink: 2 }}
+                          >
+                            {dir}
+                          </Text>
+                        )}
+                        <StatusBadge status={file.status} fonts={fonts} colors={colors} />
+                      </View>
                       {isSelected && <Check size={12} color={colors.git.info} strokeWidth={2.5} />}
                     </TouchableOpacity>
                   );
