@@ -1,5 +1,5 @@
 import Loading from "@/components/Loading";
-import Header, { useHeaderHeight } from "@/components/Header";
+import Header from "@/components/Header";
 import { Message, useConnection } from "@/contexts/ConnectionContext";
 import { useEditorConfig } from "@/contexts/EditorContext";
 import { useReviewPrompt } from "@/contexts/ReviewPromptContext";
@@ -9,6 +9,8 @@ import { monoFamilies } from "@/constants/themes";
 import { useApi } from "@/hooks/useApi";
 import { logger } from "@/lib/logger";
 import { usePlugins } from "@/plugins/context";
+import { useDrawerStatus } from "@react-navigation/drawer";
+import { DrawerActions, useNavigation } from "@react-navigation/native";
 import * as Haptics from "expo-haptics";
 import { ChevronDown, ChevronUp, File, Folder, Keyboard as KeyboardIcon, Save, Search, Star, X } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -301,12 +303,14 @@ function createEditorHtml({
 export default function EditorPanel({ bottomBarHeight: _bottomBarHeight }: PluginPanelProps) {
   const { colors, fonts, fontSelection, isDark } = useTheme();
   const { fireData, onDataEvent } = useConnection();
-  const headerHeight = useHeaderHeight();
-  const { openTab } = usePlugins();
+  const { drawerContentVariant, setDrawerContentVariant } = usePlugins();
   const { config } = useEditorConfig();
   const { showEditorReviewButton, requestEditorReview } = useReviewPrompt();
   const { fs } = useApi();
   const { register, unregister } = useSessionRegistryActions();
+  const navigation = useNavigation();
+  const drawerStatus = useDrawerStatus();
+  const isFilesDrawerOpen = drawerStatus === "open" && drawerContentVariant === "editor-files";
   const extendedColors = colors as typeof colors & {
     bg?: typeof colors.bg & { overlay?: string };
     accent?: typeof colors.accent & { subtle?: string };
@@ -1000,6 +1004,15 @@ export default function EditorPanel({ bottomBarHeight: _bottomBarHeight }: Plugi
     void requestEditorReview();
   }, [requestEditorReview]);
 
+  const handleFilesButtonPress = useCallback(() => {
+    if (isFilesDrawerOpen) {
+      navigation.dispatch(DrawerActions.closeDrawer());
+      return;
+    }
+    setDrawerContentVariant("editor-files");
+    navigation.dispatch(DrawerActions.openDrawer());
+  }, [isFilesDrawerOpen, navigation, setDrawerContentVariant]);
+
   const headerAccessory = useMemo(() => {
     if (!activeTab && !showEditorReviewButton) {
       return null;
@@ -1038,11 +1051,14 @@ export default function EditorPanel({ bottomBarHeight: _bottomBarHeight }: Plugi
               }
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => openTab("explorer")}
+              onPress={handleFilesButtonPress}
               style={styles.headerAction}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Folder size={22} color={colors.fg.muted} strokeWidth={2} />
+              {isFilesDrawerOpen
+                ? <X size={22} color={colors.fg.muted} strokeWidth={2.2} />
+                : <Folder size={22} color={colors.fg.muted} strokeWidth={2} />
+              }
             </TouchableOpacity>
           </>
         ) : null}
@@ -1054,10 +1070,11 @@ export default function EditorPanel({ bottomBarHeight: _bottomBarHeight }: Plugi
     colors.accent.default,
     colors.fg.muted,
     fonts.sans.medium,
+    handleFilesButtonPress,
     handleReviewPress,
+    isFilesDrawerOpen,
     isSearchOpen,
     openSearchPanel,
-    openTab,
     showEditorReviewButton,
   ]);
 
@@ -1164,7 +1181,7 @@ export default function EditorPanel({ bottomBarHeight: _bottomBarHeight }: Plugi
                 </Text>
               </View>
               <TouchableOpacity
-                onPress={() => openTab("explorer")}
+                onPress={handleFilesButtonPress}
                 style={{
                   alignItems: "center",
                   backgroundColor: colors.bg.raised,

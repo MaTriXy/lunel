@@ -1,4 +1,5 @@
 import { ThemeColors, typography } from "@/constants/themes";
+import { usePlugins } from "@/plugins/context";
 import { DrawerActions, useNavigation } from "@react-navigation/native";
 import * as Haptics from "expo-haptics";
 import { Plus, ChevronLeft } from "lucide-react-native";
@@ -93,8 +94,12 @@ function Header<T extends BaseTab>({
   getTabWidth = defaultGetTabWidth,
 }: HeaderProps<T>) {
   const navigation = useNavigation();
+  const { setDrawerContentVariant } = usePlugins();
   const { top: topInset } = useSafeAreaInsets();
-  const openDrawer = () => navigation.dispatch(DrawerActions.openDrawer());
+  const openDrawer = () => {
+    setDrawerContentVariant("default");
+    navigation.dispatch(DrawerActions.openDrawer());
+  };
   const triggerLightHaptic = () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };

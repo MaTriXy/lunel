@@ -3,18 +3,27 @@ import { useConnection } from "@/contexts/ConnectionContext";
 import { useSessionRegistry } from "@/contexts/SessionRegistry";
 import type { SessionItem } from "@/contexts/SessionRegistry";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useApi, FileEntry } from "@/hooks/useApi";
+import { gPI } from "@/plugins";
 import { usePlugins } from "@/plugins/context";
+import { resolveMaterialIconUri } from "@/plugins/extra/explorer/materialIconTheme";
 import { DrawerContentComponentProps, useDrawerStatus } from "@react-navigation/drawer";
 import * as Haptics from "expo-haptics";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useRouter } from "expo-router";
 import {
   ChevronDown,
+  ChevronRight,
+  CopyMinus,
+  File,
+  Folder,
+  FolderOpen,
   HelpCircle,
   Home,
   LoaderCircle,
   MessageCircle,
   PencilLine,
+  RefreshCw,
   SquarePen,
   Search,
   Settings,
@@ -36,6 +45,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { SvgUri } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 function SpinningLoader({ color, opacity = 1, size = 18 }: { color: string; opacity?: number; size?: number }) {
@@ -71,16 +81,132 @@ const HIDE_SIDEBAR_SESSION_PLUGIN_IDS = new Set([
   "tools",
 ]);
 
+type EditorTreeNode = {
+  name: string;
+  path: string;
+  type: "file" | "directory";
+  children?: EditorTreeNode[];
+};
+
+type TreeListItem = {
+  node: EditorTreeNode;
+  depth: number;
+};
+
+const sortEntries = (entries: FileEntry[]) => {
+  return [...entries].sort((a, b) => {
+    if (a.type !== b.type) {
+      return a.type === "directory" ? -1 : 1;
+    }
+    return a.name.localeCompare(b.name);
+  });
+};
+
+const toEditorTreeNodes = (entries: FileEntry[], parentPath: string): EditorTreeNode[] => {
+  return sortEntries(entries).map((entry) => ({
+    name: entry.name,
+    type: entry.type,
+    path: parentPath === "." ? entry.name : `${parentPath}/${entry.name}`,
+    children: entry.type === "directory" ? [] : undefined,
+  }));
+};
+
+const attachChildrenAtPath = (
+  nodes: EditorTreeNode[],
+  targetPath: string,
+  children: EditorTreeNode[]
+): EditorTreeNode[] => {
+  return nodes.map((node) => {
+    if (node.path === targetPath && node.type === "directory") {
+      return { ...node, children };
+    }
+
+    if (!node.children || node.children.length === 0) {
+      return node;
+    }
+
+    return {
+      ...node,
+      children: attachChildrenAtPath(node.children, targetPath, children),
+    };
+  });
+};
+
+const flattenTree = (
+  nodes: EditorTreeNode[],
+  expandedPaths: Set<string>,
+  depth = 0
+): TreeListItem[] => {
+  const result: TreeListItem[] = [];
+
+  for (const node of nodes) {
+    result.push({ node, depth });
+    if (node.type === "directory" && expandedPaths.has(node.path) && node.children?.length) {
+      result.push(...flattenTree(node.children, expandedPaths, depth + 1));
+    }
+  }
+
+  return result;
+};
+
+function TreeIcon({
+  node,
+  isExpanded,
+  colors,
+}: {
+  node: EditorTreeNode;
+  isExpanded: boolean;
+  colors: any;
+}) {
+  const [iconLoadFailed, setIconLoadFailed] = useState(false);
+  const iconUri = resolveMaterialIconUri({ name: node.name, type: node.type });
+
+  useEffect(() => {
+    setIconLoadFailed(false);
+  }, [iconUri]);
+
+  if (!iconUri || iconLoadFailed) {
+    if (node.type === "directory") {
+      return isExpanded
+        ? <FolderOpen size={16} color={colors.accent.default} strokeWidth={2} />
+        : <Folder size={16} color={colors.accent.default} strokeWidth={2} />;
+    }
+    return <File size={16} color={colors.fg.muted} strokeWidth={2} />;
+  }
+
+  return (
+    <SvgUri
+      width={18}
+      height={18}
+      uri={iconUri}
+      onError={() => setIconLoadFailed(true)}
+    />
+  );
+}
+
 export default function DrawerContent(props: DrawerContentComponentProps) {
   const { colors, fonts, isDark } = useTheme();
   const { status, disconnect } = useConnection();
-  const { activeTabId: activePluginTabId, openTabs, getPlugin, openTab } = usePlugins();
+  const { fs } = useApi();
+  const {
+    activeTabId: activePluginTabId,
+    openTabs,
+    getPlugin,
+    openTab,
+    drawerContentVariant,
+    setDrawerContentVariant,
+  } = usePlugins();
   const { registry } = useSessionRegistry();
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [expandedBackends, setExpandedBackends] = useState<Set<string>>(new Set());
   const [loadingBackends, setLoadingBackends] = useState<Set<string>>(new Set());
+  const [editorTree, setEditorTree] = useState<EditorTreeNode[]>([]);
+  const [expandedEditorDirs, setExpandedEditorDirs] = useState<Set<string>>(new Set());
+  const [loadedEditorDirs, setLoadedEditorDirs] = useState<Set<string>>(new Set());
+  const [loadingEditorDirs, setLoadingEditorDirs] = useState<Set<string>>(new Set());
+  const [editorTreeError, setEditorTreeError] = useState<string | null>(null);
   const inputRef = useRef<TextInput>(null);
   const pendingNavigationRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const interactionHandleRef = useRef<{ cancel?: () => void } | null>(null);
@@ -110,8 +236,9 @@ export default function DrawerContent(props: DrawerContentComponentProps) {
       handleCancelSearch();
       setExpandedBackends(new Set());
       setLoadingBackends(new Set());
+      setDrawerContentVariant("default");
     }
-  }, [drawerStatus]);
+  }, [drawerStatus, setDrawerContentVariant]);
 
   useEffect(() => {
     return () => {
@@ -169,6 +296,11 @@ export default function DrawerContent(props: DrawerContentComponentProps) {
   };
 
   const handleSessionClose = (id: string) => {
+    if (effectivePluginId !== "ai") {
+      reg?.onSessionClose(id);
+      return;
+    }
+
     Alert.alert(
       "Delete Session",
       "Are you sure you want to delete this session?",
@@ -269,6 +401,212 @@ export default function DrawerContent(props: DrawerContentComponentProps) {
       router.push("/feedback" as any);
     });
   };
+
+  const loadEditorDirectory = useCallback(async (dirPath: string) => {
+    setLoadingEditorDirs((prev) => {
+      const next = new Set(prev);
+      next.add(dirPath);
+      return next;
+    });
+
+    try {
+      const entries = await fs.list(dirPath);
+      const children = toEditorTreeNodes(entries, dirPath);
+
+      if (dirPath === ".") {
+        setEditorTree(children);
+      } else {
+        setEditorTree((prev) => attachChildrenAtPath(prev, dirPath, children));
+      }
+
+      setLoadedEditorDirs((prev) => {
+        const next = new Set(prev);
+        next.add(dirPath);
+        return next;
+      });
+      setEditorTreeError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load files";
+      setEditorTreeError(message);
+    } finally {
+      setLoadingEditorDirs((prev) => {
+        const next = new Set(prev);
+        next.delete(dirPath);
+        return next;
+      });
+    }
+  }, [fs]);
+
+  useEffect(() => {
+    if (drawerStatus !== "open" || drawerContentVariant !== "editor-files") {
+      return;
+    }
+    if (loadedEditorDirs.has(".")) {
+      return;
+    }
+    void loadEditorDirectory(".");
+  }, [drawerContentVariant, drawerStatus, loadEditorDirectory, loadedEditorDirs]);
+
+  const handleEditorDirectoryToggle = useCallback((dirPath: string) => {
+    const isExpanded = expandedEditorDirs.has(dirPath);
+    if (isExpanded) {
+      setExpandedEditorDirs((prev) => {
+        const next = new Set(prev);
+        next.delete(dirPath);
+        return next;
+      });
+      return;
+    }
+
+    setExpandedEditorDirs((prev) => {
+      const next = new Set(prev);
+      next.add(dirPath);
+      return next;
+    });
+
+    if (!loadedEditorDirs.has(dirPath) && !loadingEditorDirs.has(dirPath)) {
+      void loadEditorDirectory(dirPath);
+    }
+  }, [expandedEditorDirs, loadedEditorDirs, loadingEditorDirs, loadEditorDirectory]);
+
+  const handleEditorFileOpen = useCallback(async (filePath: string) => {
+    setDrawerContentVariant("default");
+    openTab("editor");
+    props.navigation.closeDrawer();
+    void gPI.editor.openFile(filePath).catch((error) => {
+      const message = error instanceof Error ? error.message : "Failed to open file";
+      Alert.alert("Error", message);
+    });
+  }, [openTab, props.navigation, setDrawerContentVariant]);
+
+  const visibleEditorTree = flattenTree(editorTree, expandedEditorDirs);
+
+  if (drawerContentVariant === "editor-files") {
+    const isRootLoading = loadingEditorDirs.has(".") && editorTree.length === 0;
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg.base }}>
+        <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+          <View style={styles.editorFilesHeader}>
+            <Text style={[styles.editorFilesTitle, { color: colors.fg.muted, fontFamily: fonts.sans.medium }]}>
+              Files
+            </Text>
+            <View style={styles.editorFilesHeaderActions}>
+              <TouchableOpacity
+                onPress={() => {
+                  setDrawerContentVariant("default");
+                  openTab("explorer");
+                  props.navigation.closeDrawer();
+                }}
+                activeOpacity={0.7}
+                style={styles.editorFilesHeaderButton}
+              >
+                <Folder size={16} color={colors.fg.muted} strokeWidth={2} style={{ opacity: 0.9 }} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  setLoadedEditorDirs(new Set());
+                  setExpandedEditorDirs(new Set());
+                  setEditorTree([]);
+                  void loadEditorDirectory(".");
+                }}
+                activeOpacity={0.7}
+                style={styles.editorFilesHeaderButton}
+              >
+                <RefreshCw size={16} color={colors.fg.muted} strokeWidth={2} style={{ opacity: 0.9 }} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setExpandedEditorDirs(new Set())}
+                activeOpacity={0.7}
+                style={styles.editorFilesHeaderButton}
+              >
+                <CopyMinus size={16} color={colors.fg.muted} strokeWidth={2} style={{ opacity: 0.9 }} />
+              </TouchableOpacity>
+            </View>
+          </View>
+          <View
+            style={{
+              height: StyleSheet.hairlineWidth,
+              backgroundColor: colors.border.secondary,
+              marginTop: 3,
+              marginBottom: 8,
+            }}
+          />
+
+          {isRootLoading ? (
+            <View style={[styles.emptyState, { paddingTop: 32 }]}>
+              <SpinningLoader color={colors.fg.muted} opacity={0.6} />
+              <Text style={[styles.emptyText, { color: colors.fg.subtle, fontFamily: fonts.sans.regular }]}>
+                Loading files...
+              </Text>
+            </View>
+          ) : editorTreeError ? (
+            <View style={[styles.emptyState, { paddingTop: 32 }]}>
+              <Text style={[styles.emptyText, { color: colors.fg.subtle, fontFamily: fonts.sans.regular }]}>
+                {editorTreeError}
+              </Text>
+            </View>
+          ) : visibleEditorTree.length === 0 ? (
+            <View style={[styles.emptyState, { paddingTop: 32 }]}>
+              <Text style={[styles.emptyText, { color: colors.fg.subtle, fontFamily: fonts.sans.regular }]}>
+                No files found
+              </Text>
+            </View>
+          ) : (
+            <ScrollView showsVerticalScrollIndicator keyboardDismissMode="on-drag">
+              {visibleEditorTree.map(({ node, depth }) => {
+                const isDir = node.type === "directory";
+                const isExpanded = expandedEditorDirs.has(node.path);
+                const isLoading = loadingEditorDirs.has(node.path);
+                return (
+                  <TouchableOpacity
+                    key={node.path}
+                    onPress={() => {
+                      if (isDir) {
+                        handleEditorDirectoryToggle(node.path);
+                        return;
+                      }
+                      void handleEditorFileOpen(node.path);
+                    }}
+                    activeOpacity={0.7}
+                    style={[
+                      styles.editorTreeRow,
+                      {
+                        paddingLeft: 14 + depth * 14,
+                      },
+                    ]}
+                  >
+                    {isDir ? (
+                      <View style={styles.editorTreeChevron}>
+                        {isExpanded
+                          ? <ChevronDown size={14} color={colors.fg.subtle} strokeWidth={2} />
+                          : <ChevronRight size={14} color={colors.fg.subtle} strokeWidth={2} />
+                        }
+                      </View>
+                    ) : (
+                      <View style={styles.editorTreeChevron} />
+                    )}
+
+                    <View style={styles.editorTreeIcon}>
+                      <TreeIcon node={node} isExpanded={isExpanded} colors={colors} />
+                    </View>
+
+                    <Text
+                      numberOfLines={1}
+                      style={[styles.editorTreeLabel, { color: colors.fg.default, fontFamily: fonts.sans.regular }]}
+                    >
+                      {node.name}
+                    </Text>
+
+                    {isLoading ? <SpinningLoader color={colors.fg.subtle} opacity={0.7} size={12} /> : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          )}
+        </SafeAreaView>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg.base }}>
@@ -587,5 +925,49 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     marginRight: 14,
+  },
+  editorFilesHeader: {
+    paddingHorizontal: 14,
+    paddingTop: 16,
+    paddingBottom: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  editorFilesHeaderButton: {
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  editorFilesHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  editorTreeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingRight: 14,
+    height: 28,
+    gap: 2,
+  },
+  editorTreeChevron: {
+    width: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  editorTreeIcon: {
+    width: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  editorTreeLabel: {
+    flex: 1,
+    fontSize: typography.body,
+  },
+  editorFilesTitle: {
+    fontSize: typography.heading,
+    opacity: 0.65,
   },
 });

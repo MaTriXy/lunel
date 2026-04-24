@@ -47,6 +47,8 @@ interface PluginContextType {
   updateBottomBar: (config: Partial<BottomBarConfig>) => void;
   setRow1Slot5: (pluginId: string | null) => void;
   setRow2Slot: (index: number, pluginId: string | null) => void;
+  drawerContentVariant: "default" | "editor-files";
+  setDrawerContentVariant: (variant: "default" | "editor-files") => void;
 
   // Initialization
   isLoading: boolean;
@@ -75,6 +77,7 @@ export function PluginProvider({ children }: { children: ReactNode }) {
   const [openTabs, setOpenTabs] = useState<PluginInstance[]>([]);
   const [activeTabId, setActiveTabId] = useState<string>('');
   const [bottomBarConfig, setBottomBarConfig] = useState<BottomBarConfig>(DEFAULT_BOTTOM_BAR_CONFIG);
+  const [drawerContentVariant, setDrawerContentVariant] = useState<"default" | "editor-files">("default");
 
   // Get plugins from registry
   const plugins = useMemo(() => pluginRegistry.getAll(), []);
@@ -353,6 +356,8 @@ export function PluginProvider({ children }: { children: ReactNode }) {
     updateBottomBar,
     setRow1Slot5,
     setRow2Slot,
+    drawerContentVariant,
+    setDrawerContentVariant,
     isLoading,
   };
 
