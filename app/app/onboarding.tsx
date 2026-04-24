@@ -15,6 +15,7 @@ import {
   Globe,
   Network,
   QrCode,
+  EyeOff,
   Smartphone,
   SquareTerminal,
   Terminal,
@@ -453,92 +454,72 @@ function CopyableCommand({ command, fonts, colors }: { command: string; fonts: R
 
 const ENCRYPTION_POINTS = [
   {
-    icon: "shield-checkmark" as const,
-    label: "Encrypted on your device",
-    sub: "Locked before it leaves your machine.",
-    color: "#6366f1",
+    icon: Shield,
+    label: "End-to-end encrypted sessions",
+    sub: "Encrypted between your device and machine.",
+    color: "#5b6df8",
   },
   {
-    icon: "eye-off" as const,
-    label: "We can't read your data",
-    sub: "Even our servers see nothing.",
-    color: "#8b5cf6",
+    icon: QrCode,
+    label: "Local pairing with QR",
+    sub: "One-time QR pairing keeps each connection secure.",
+    color: "#06b6d4",
   },
   {
-    icon: "analytics" as const,
-    label: "Zero tracking",
-    sub: "No analytics. No telemetry. Nothing.",
+    icon: EyeOff,
+    label: "No tracking telemetry",
+    sub: "No analytics events or behavioral tracking.",
     color: "#10b981",
   },
   {
-    icon: "key" as const,
-    label: "One-time session keys",
-    sub: "Fresh key every session. Gone after.",
+    icon: GitBranch,
+    label: "Open source implementation",
+    sub: "Check the code and verify security.",
     color: "#f59e0b",
-  },
-  {
-    icon: "logo-github" as const,
-    label: "Open source",
-    sub: "Every line on GitHub. Verify it yourself.",
-    color: "#3b82f6",
   },
 ];
 
 function EncryptionPage() {
   const { colors, fonts } = useTheme();
-  const shieldAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.timing(shieldAnim, {
-      toValue: 1,
-      duration: 600,
-      easing: Easing.out(Easing.ease),
-      useNativeDriver: true,
-    }).start();
-  }, []);
-
-  const shieldScale = shieldAnim.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] });
 
   return (
     <View style={{ width: SCREEN_WIDTH, flex: 1 }}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 90 }}>
-
-        {/* Hero */}
-        <View style={{ alignItems: "center", paddingTop: 40, marginBottom: 32 }}>
-          <Animated.View style={{ opacity: shieldAnim, transform: [{ scale: shieldScale }], marginBottom: 20 }}>
-            <View style={{ width: 80, height: 80, borderRadius: 24, backgroundColor: "#6366f118", alignItems: "center", justifyContent: "center" }}>
-              <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: "#6366f130", alignItems: "center", justifyContent: "center" }}>
-                <MaterialCommunityIcons name="shield-lock" size={30} color="#6366f1" />
-              </View>
-            </View>
-          </Animated.View>
-
-          <Text style={{ fontSize: 26, fontFamily: fonts.sans.semibold, color: colors.fg.default, textAlign: "center", lineHeight: 33, marginBottom: 8 }}>
-            Private by design
-          </Text>
-          <Text style={{ fontSize: 14, fontFamily: fonts.sans.regular, color: colors.fg.muted, textAlign: "center", lineHeight: 22, maxWidth: 270 }}>
-            End-to-end encrypted. We track nothing.
-          </Text>
-
-          {/* Zero tracking pill */}
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 16, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, backgroundColor: "#10b98118", borderWidth: 1, borderColor: "#10b98130" }}>
-            <Ionicons name="checkmark-circle" size={14} color="#10b981" />
-            <Text style={{ fontSize: 12, fontFamily: fonts.sans.semibold, color: "#10b981" }}>No analytics · No telemetry · No tracking</Text>
+        <View style={{ paddingTop: 36, marginBottom: 22 }}>
+          <View style={{ alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 7, backgroundColor: colors.bg.raised, borderRadius: 999, paddingHorizontal: 11, paddingVertical: 5 }}>
+            <Shield size={13} color={colors.fg.default} strokeWidth={2.1} />
+            <Text style={{ fontSize: 11.5, fontFamily: fonts.sans.semibold, color: colors.fg.default, letterSpacing: 0.2 }}>
+              Privacy First
+            </Text>
           </View>
+
+          <Text style={{ fontSize: 27, fontFamily: fonts.sans.semibold, color: colors.fg.default, lineHeight: 34, marginTop: 14, marginBottom: 7 }}>
+            Security that feels invisible
+          </Text>
+          <Text style={{ fontSize: 14, fontFamily: fonts.sans.regular, color: colors.fg.muted, lineHeight: 22, maxWidth: 300 }}>
+            Lunel keeps your session private by default, so you can connect and ship without extra setup.
+          </Text>
         </View>
 
-        {/* Points */}
-        <View style={{ gap: 10 }}>
-          {ENCRYPTION_POINTS.map((point) => (
+        <View style={{ backgroundColor: colors.bg.raised, borderRadius: 16, overflow: "hidden" }}>
+          {ENCRYPTION_POINTS.map((point, index) => (
             <View
               key={point.label}
-              style={{ flexDirection: "row", alignItems: "flex-start", gap: 14, backgroundColor: colors.bg.raised, borderRadius: 14, padding: 14 }}
+              style={{
+                flexDirection: "row",
+                alignItems: "flex-start",
+                gap: 12,
+                paddingHorizontal: 14,
+                paddingVertical: 13,
+                borderBottomWidth: index === ENCRYPTION_POINTS.length - 1 ? 0 : 1,
+                borderBottomColor: colors.bg.base,
+              }}
             >
-              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: point.color + "18", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <Ionicons name={point.icon as any} size={17} color={point.color} />
+              <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: point.color + "18", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <point.icon size={16} color={point.color} strokeWidth={2} />
               </View>
-              <View style={{ flex: 1, paddingTop: 2 }}>
-                <Text style={{ fontSize: 13.5, fontFamily: fonts.sans.semibold, color: colors.fg.default, marginBottom: 3 }}>
+              <View style={{ flex: 1, paddingTop: 1 }}>
+                <Text style={{ fontSize: 13.8, fontFamily: fonts.sans.semibold, color: colors.fg.default, marginBottom: 3 }}>
                   {point.label}
                 </Text>
                 <Text style={{ fontSize: 12, fontFamily: fonts.sans.regular, color: colors.fg.muted, lineHeight: 18 }}>
@@ -549,7 +530,28 @@ function EncryptionPage() {
           ))}
         </View>
 
-
+        <Pressable
+          onPress={() => Linking.openURL("https://github.com/lunel-dev/lunel")}
+          style={({ pressed }) => ({
+            marginTop: 16,
+            backgroundColor: colors.bg.raised,
+            borderRadius: 14,
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            opacity: pressed ? 0.72 : 1,
+          })}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
+            <FontAwesome name="github" size={15} color={colors.fg.default} />
+            <Text style={{ fontSize: 12.8, fontFamily: fonts.sans.medium, color: colors.fg.default }}>
+              Review the source on GitHub
+            </Text>
+          </View>
+          <Ionicons name="arrow-forward" size={14} color={colors.fg.muted} />
+        </Pressable>
       </ScrollView>
 
       <LinearGradient
