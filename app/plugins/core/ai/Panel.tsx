@@ -11,6 +11,7 @@ import { useConnection } from "@/contexts/ConnectionContext";
 import { useEditorConfig } from "@/contexts/EditorContext";
 import { useAI } from "@/hooks/useAI";
 import { useApi, FileEntry } from "@/hooks/useApi";
+import { logger } from "@/lib/logger";
 import type { AIEvent, AISession, AIMessage, AIPart, AIAgent, AIProvider, AIPermission, AIQuestion, AIFileAttachment, ModelRef, PermissionResponse, AiBackend, CodexPromptOptions } from "./types";
 import Markdown from "./Markdown";
 import ToolCall from "./ToolCall";
@@ -2264,6 +2265,8 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
   const latestVoiceLevelRef = useRef(VOICE_WAVE_IDLE_LEVEL);
   const voiceWaveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const messagesListRef = useRef<FlashList<any>>(null);
+  const messagesMapRef = useRef<Record<string, AIMessage[]>>({});
+  const streamingBySessionRef = useRef<Record<string, true>>({});
   const isNearBottomRef = useRef(true);
   const autoFollowRef = useRef(true);
   const userDraggingMessagesRef = useRef(false);
@@ -2276,7 +2279,6 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
   const refreshSessionMessagesRef = useRef<(sessionId: string, backend: AiBackend, force?: boolean) => Promise<void>>(
     async () => {}
   );
-  const codexFinalSyncInFlightRef = useRef<Set<string>>(new Set());
   const deletedSessionKeysRef = useRef<Set<string>>(new Set());
   const clearScheduledScroll = useCallback(() => {
     if (scrollFrameRef.current != null) {
@@ -2325,6 +2327,14 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
   const needsApiKey = needsApiKeyByBackend[activeBackend] || false;
   const isActiveSessionLoading = !!activeSessionId && loadingSessionId === activeSessionId && !messagesMap[activeSessionId];
   const composerBottomOffset = composerHeight + (activeBackend === "codex" && showMoreOptions ? 40 : 0);
+
+  useEffect(() => {
+    messagesMapRef.current = messagesMap;
+  }, [messagesMap]);
+
+  useEffect(() => {
+    streamingBySessionRef.current = streamingBySession;
+  }, [streamingBySession]);
 
   // AI hook with event handling
   const ai = useAI({
@@ -2545,6 +2555,13 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
           const sessId = (props.sessionID as string) || (props.sessionId as string);
           const backend = (event.backend ?? "opencode") as AiBackend;
           if (sessId) {
+            logger.info("ai-panel", "session idle received", {
+              sessionId: sessId,
+              backend,
+              hadStreaming: Boolean(streamingBySessionRef.current[sessId]),
+              currentMessageCount: (messagesMapRef.current[sessId] || []).length,
+              currentPartCount: (messagesMapRef.current[sessId] || []).reduce((sum, message) => sum + (message.parts?.length || 0), 0),
+            });
             setStreamingBySession((prev) => {
               if (!prev[sessId]) return prev;
               const next = { ...prev };
@@ -2552,12 +2569,12 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
               return next;
             });
             setSessionActivityLabels((prev) => ({ ...prev, [sessId]: "Done" }));
-            // Codex streams partial deltas; after completion force a canonical
-            // re-read so final rendering is clean and fully normalized.
-            if (backend === "codex" && !codexFinalSyncInFlightRef.current.has(sessId)) {
-              codexFinalSyncInFlightRef.current.add(sessId);
-              void refreshSessionMessagesRef.current(sessId, "codex", true).finally(() => {
-                codexFinalSyncInFlightRef.current.delete(sessId);
+            if (backend === "codex") {
+              logger.info("ai-panel", "skipping codex final sync", {
+                sessionId: sessId,
+                reason: "streamed state is currently richer than getMessages() history",
+                currentMessageCount: (messagesMapRef.current[sessId] || []).length,
+                currentPartCount: (messagesMapRef.current[sessId] || []).reduce((sum, message) => sum + (message.parts?.length || 0), 0),
               });
             }
           }
@@ -2785,11 +2802,29 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
 
   const refreshSessionMessages = useCallback(async (sessionId: string, backend: AiBackend, force = false) => {
     try {
+      const beforeMessages = messagesMapRef.current[sessionId] || [];
+      logger.info("ai-panel", "refresh session messages requested", {
+        sessionId,
+        backend,
+        force,
+        beforeMessageCount: beforeMessages.length,
+        beforePartCount: beforeMessages.reduce((sum, message) => sum + (message.parts?.length || 0), 0),
+        beforeRoles: beforeMessages.map((message) => message.role),
+      });
       setLoadingSessionId(sessionId);
       const msgs = await ai.getMessages(sessionId, backend);
       if (!Array.isArray(msgs)) return;
+      const incoming = msgs as AIMessage[];
+      logger.info("ai-panel", "refresh session messages fetched", {
+        sessionId,
+        backend,
+        force,
+        fetchedMessageCount: incoming.length,
+        fetchedPartCount: incoming.reduce((sum, message) => sum + (message.parts?.length || 0), 0),
+        fetchedRoles: incoming.map((message) => message.role),
+        fetchedPartTypes: incoming.flatMap((message) => (message.parts || []).map((part) => part.type)),
+      });
       setMessagesMap((prev) => {
-        const incoming = msgs as AIMessage[];
         const next = backend === "codex"
           ? incoming.map((msg) => {
               const existingMsg = (prev[sessionId] || []).find((m) => m.id === msg.id);
@@ -2801,8 +2836,25 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
             })
           : incoming;
         if (!force && sameMessagesShape(prev[sessionId], next)) {
+          logger.info("ai-panel", "refresh session messages skipped", {
+            sessionId,
+            backend,
+            force,
+            reason: "same_shape",
+          });
           return prev;
         }
+        logger.info("ai-panel", "refresh session messages applying", {
+          sessionId,
+          backend,
+          force,
+          appliedMessageCount: next.length,
+          appliedPartCount: next.reduce((sum, message) => sum + (message.parts?.length || 0), 0),
+          appliedRoles: next.map((message) => message.role),
+          appliedPartTypes: next.flatMap((message) => (message.parts || []).map((part) => part.type)),
+          previousMessageCount: (prev[sessionId] || []).length,
+          previousPartCount: (prev[sessionId] || []).reduce((sum, message) => sum + (message.parts?.length || 0), 0),
+        });
         return { ...prev, [sessionId]: next };
       });
     } catch {

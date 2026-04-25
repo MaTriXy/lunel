@@ -139,6 +139,12 @@ export class CodexProvider implements AIProvider {
   private assistantMessageIdByTurnId = new Map<string, string>();
   private partTextById = new Map<string, string>();
 
+  private debugLog(message: string, fields?: Record<string, unknown>): void {
+    if (!DEBUG_MODE) return;
+    const suffix = fields ? ` ${JSON.stringify(fields)}` : "";
+    console.log(`[codex] ${message}${suffix}`);
+  }
+
   async init(): Promise<void> {
     if (DEBUG_MODE) console.log("Starting Codex app-server...");
 
@@ -195,7 +201,10 @@ export class CodexProvider implements AIProvider {
   }
 
   async createSession(title?: string): Promise<{ session: SessionInfo }> {
-    const result = await this.call("thread/start", { cwd: process.cwd() });
+    const result = await this.call("thread/start", {
+      cwd: process.cwd(),
+      persistExtendedHistory: true,
+    });
     const threadObject = this.extractThreadObject(result);
     const threadId = this.extractThreadId(threadObject);
     if (!threadId) {
@@ -317,6 +326,11 @@ export class CodexProvider implements AIProvider {
 
   async getMessages(sessionId: string): Promise<{ messages: MessageInfo[] }> {
     const session = this.ensureLocalSession(sessionId);
+    this.debugLog("getMessages start", {
+      sessionId,
+      existingMessageCount: session.messages.length,
+      existingPartCount: session.messages.reduce((sum, message) => sum + ((message.parts as unknown[])?.length || 0), 0),
+    });
     const result = await this.call("thread/read", {
       threadId: session.id,
       includeTurns: true,
@@ -327,7 +341,19 @@ export class CodexProvider implements AIProvider {
       return { messages: session.messages };
     }
 
+    this.logThreadReadSummary(sessionId, threadObject);
+
     const historyMessages = this.decodeMessagesFromThreadRead(sessionId, threadObject);
+    this.debugLog("getMessages decoded thread", {
+      sessionId,
+      turnCount: this.readArray(threadObject.turns).length,
+      decodedMessageCount: historyMessages.length,
+      decodedPartCount: historyMessages.reduce((sum, message) => sum + ((message.parts as unknown[])?.length || 0), 0),
+      decodedRoles: historyMessages.map((message) => message.role),
+      decodedPartTypes: historyMessages.flatMap((message) =>
+        ((message.parts as unknown[]) || []).map((part) => String(this.asRecord(part).type ?? "unknown"))
+      ),
+    });
     if (historyMessages.length > 0) {
       session.messages = historyMessages;
     }
@@ -1378,7 +1404,10 @@ export class CodexProvider implements AIProvider {
     }
 
     const session = this.sessions.get(threadId);
-    const params: Record<string, unknown> = { threadId };
+    const params: Record<string, unknown> = {
+      threadId,
+      persistExtendedHistory: true,
+    };
     if (session?.cwd) {
       params.cwd = session.cwd;
     }
@@ -1453,10 +1482,12 @@ export class CodexProvider implements AIProvider {
       const assistantParts: Record<string, unknown>[] = [];
       let assistantMessageId: string | undefined;
       let assistantTimestamp = turnTime;
+      const turnItemTypes: string[] = [];
 
       for (const item of items) {
         const itemObject = this.asRecord(item);
         const type = this.normalizedItemType(this.readString(itemObject.type) ?? "");
+        turnItemTypes.push(type || "unknown");
         const itemId = this.readString(itemObject.id) ?? crypto.randomUUID();
         const timestamp = this.extractUpdatedAt(itemObject) ?? this.extractCreatedAt(itemObject) ?? (turnTime + orderOffset++);
 
@@ -1523,6 +1554,7 @@ export class CodexProvider implements AIProvider {
           || type === "mcptoolcall"
           || type === "dynamictoolcall"
           || type === "collabtoolcall"
+          || type === "collabagenttoolcall"
           || type === "websearch"
           || type === "imageview"
         ) {
@@ -1555,9 +1587,56 @@ export class CodexProvider implements AIProvider {
           this.assistantMessageIdByTurnId.set(turnId, resolvedAssistantMessageId);
         }
       }
+
+      this.debugLog("decoded stored turn", {
+        threadId,
+        turnId: turnId ?? null,
+        itemCount: items.length,
+        itemTypes: turnItemTypes,
+        emittedUserMessages: messages.filter((message) => message.role === "user").length,
+        emittedAssistantParts: assistantParts.length,
+      });
     }
 
     return messages;
+  }
+
+  private logThreadReadSummary(sessionId: string, threadObject: Record<string, unknown>): void {
+    const turns = this.readArray(threadObject.turns);
+    const turnSummaries = turns.map((turn, index) => {
+      const turnObject = this.asRecord(turn);
+      const items = this.readArray(turnObject.items);
+      return {
+        index,
+        turnId: this.readString(turnObject.id) ?? null,
+        status: this.readString(turnObject.status) ?? this.readString(this.asRecord(turnObject.status).type) ?? null,
+        itemCount: items.length,
+        itemTypes: items.map((item) => this.normalizedItemType(this.readString(this.asRecord(item).type) ?? "") || "unknown"),
+        itemSummaries: items.map((item) => {
+          const itemObject = this.asRecord(item);
+          const type = this.normalizedItemType(this.readString(itemObject.type) ?? "") || "unknown";
+          return {
+            id: this.readString(itemObject.id) ?? null,
+            type,
+            keys: Object.keys(itemObject).sort(),
+            textPreview: this.firstString(itemObject, ["text", "summary", "message", "query", "path", "tool", "command"])?.slice(0, 120) ?? null,
+            hasAggregatedOutput: typeof itemObject.aggregatedOutput === "string" && itemObject.aggregatedOutput.length > 0,
+            aggregatedOutputLength: typeof itemObject.aggregatedOutput === "string" ? itemObject.aggregatedOutput.length : 0,
+            changesCount: Array.isArray(itemObject.changes) ? itemObject.changes.length : 0,
+            hasResult: itemObject.result != null,
+            hasContentItems: Array.isArray(itemObject.contentItems) && itemObject.contentItems.length > 0,
+            status: this.readString(itemObject.status) ?? null,
+          };
+        }),
+      };
+    });
+
+    console.log(`[codex-history] thread/read summary ${JSON.stringify({
+      sessionId,
+      threadId: this.readString(threadObject.id) ?? null,
+      turnCount: turns.length,
+      turnSummaries,
+    })}`);
   }
 
   private decodeStoredToolLikePart(
@@ -1609,6 +1688,9 @@ export class CodexProvider implements AIProvider {
     }
     if (type === "imageview") {
       return "image-view";
+    }
+    if (type === "collabtoolcall" || type === "collabagenttoolcall") {
+      return "agent";
     }
     if (type === "enteredreviewmode") {
       return "review";

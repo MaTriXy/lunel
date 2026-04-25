@@ -201,6 +201,7 @@ function SessionActionsSheet({
 function PastSessionsSheet({
   visible,
   sessions,
+  colors,
   fonts,
   onOpen,
   onDelete,
@@ -208,6 +209,7 @@ function PastSessionsSheet({
 }: {
   visible: boolean;
   sessions: PairedSession[];
+  colors: any;
   fonts: any;
   onOpen: (session: PairedSession) => void;
   onDelete: (session: PairedSession) => void;
@@ -224,8 +226,18 @@ function PastSessionsSheet({
     >
       {sessions.length === 0 ? (
         <View style={pastSessionsSheetStyles.emptyContainer}>
-          <MaterialCommunityIcons name="clock-alert-outline" size={36} color="rgba(255,255,255,0.3)" style={{ marginBottom: 12 }} />
-          <Text style={[pastSessionsSheetStyles.emptyText, { fontFamily: fonts.sans.regular }]}>
+          <MaterialCommunityIcons
+            name="clock-alert-outline"
+            size={36}
+            color={colors.fg.muted}
+            style={{ marginBottom: 12, opacity: 0.5 }}
+          />
+          <Text
+            style={[
+              pastSessionsSheetStyles.emptyText,
+              { color: colors.fg.muted, fontFamily: fonts.sans.regular },
+            ]}
+          >
             No past sessions
           </Text>
         </View>
@@ -245,13 +257,19 @@ function PastSessionsSheet({
                   {session.hostname}
                 </Text>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 }}>
-                  <FontAwesome name="folder" size={11} color="rgba(255,255,255,0.35)" />
-                  <Text numberOfLines={1} style={[pastSessionsSheetStyles.sessionRoot, { fontFamily: fonts.sans.regular, flex: 1, fontSize: typography.caption }]}>
+                  <FontAwesome name="folder" size={11} color={colors.fg.muted} style={{ opacity: 0.7 }} />
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      pastSessionsSheetStyles.sessionRoot,
+                      { color: colors.fg.muted, fontFamily: fonts.sans.regular, flex: 1, fontSize: typography.caption },
+                    ]}
+                  >
                     {session.root.startsWith("/") ? session.root.slice(1) : session.root}
                   </Text>
                 </View>
               </View>
-              <ChevronRight size={18} color="rgba(255,255,255,0.4)" strokeWidth={2} />
+              <ChevronRight size={18} color={colors.fg.muted} strokeWidth={2} />
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -574,6 +592,7 @@ export default function Auth() {
       <PastSessionsSheet
         visible={showPastSessionsSheet}
         sessions={pairedSessions}
+        colors={colors}
         fonts={fonts}
         onOpen={handleSessionPress}
         onDelete={handleSessionLongPress}
@@ -906,11 +925,9 @@ const pastSessionsSheetStyles = StyleSheet.create({
   sessionHostname: {
     fontSize: 14,
     lineHeight: 20,
-    color: "#FFFFFF",
   },
   sessionRoot: {
     fontSize: 12,
-    color: "rgba(255,255,255,0.45)",
   },
   emptyContainer: {
     alignItems: "center",
@@ -920,7 +937,6 @@ const pastSessionsSheetStyles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 14,
-    color: "rgba(255,255,255,0.4)",
     textAlign: "center",
   },
 });

@@ -207,6 +207,11 @@ function describeWebSocketErrorEvent(event: unknown): Record<string, unknown> {
   };
 }
 
+function shouldLogRequest(ns: string, action: string): boolean {
+  if (ns === 'fs' && action === 'ls') return false;
+  return true;
+}
+
 function normalizeGateway(input: string): string {
   const raw = input.trim();
   if (!raw) return DEFAULT_GATEWAY;
@@ -501,14 +506,16 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
       const startedAt = Date.now();
       const path = typeof payload.path === 'string' ? payload.path : null;
 
-      logger.info('connection', 'sending request', {
-        id,
-        ns,
-        action,
-        channel: 'v2',
-        path,
-        timeoutMs,
-      });
+      if (shouldLogRequest(ns, action)) {
+        logger.info('connection', 'sending request', {
+          id,
+          ns,
+          action,
+          channel: 'v2',
+          path,
+          timeoutMs,
+        });
+      }
 
       const timeout = setTimeout(() => {
         pendingRequestsRef.current.delete(id);
@@ -798,15 +805,17 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
           if (pending) {
             clearTimeout(pending.timeout);
             pendingRequestsRef.current.delete(response.id);
-            logger.info('connection', 'received response', {
-              id: response.id,
-              ns: pending.ns,
-              action: pending.action,
-              path: pending.path,
-              ok: response.ok,
-              durationMs: Date.now() - pending.startedAt,
-              errorCode: response.error?.code ?? null,
-            });
+            if (shouldLogRequest(pending.ns, pending.action)) {
+              logger.info('connection', 'received response', {
+                id: response.id,
+                ns: pending.ns,
+                action: pending.action,
+                path: pending.path,
+                ok: response.ok,
+                durationMs: Date.now() - pending.startedAt,
+                errorCode: response.error?.code ?? null,
+              });
+            }
             pending.resolve(response);
             return;
           }

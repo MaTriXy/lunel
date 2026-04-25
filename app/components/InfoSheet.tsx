@@ -156,7 +156,6 @@ const sheetStyles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.2)",
     alignSelf: "center",
     marginBottom: 16,
   },
@@ -169,18 +168,15 @@ const sheetStyles = StyleSheet.create({
   title: {
     fontSize: typography.heading,
     fontWeight: "700",
-    color: "#FFFFFF",
   },
   subtitle: {
     fontSize: typography.caption,
-    color: "rgba(255,255,255,0.4)",
     marginTop: 3,
   },
   closeButton: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.08)",
     alignItems: "center",
     justifyContent: "center",
   },
