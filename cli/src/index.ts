@@ -1151,9 +1151,19 @@ async function handleGitDiscard(payload: Record<string, unknown>): Promise<Recor
     // Also clean untracked files
     await runGit(["clean", "-fd"]);
   } else if (paths && paths.length > 0) {
-    const result = await runGit(["checkout", "--", ...paths]);
-    if (result.code !== 0) {
-      throw Object.assign(new Error(result.stderr || "git checkout failed"), { code: "EGIT" });
+    for (const filePath of paths) {
+      const tracked = await runGit(["ls-files", "--error-unmatch", "--", filePath]);
+      if (tracked.code === 0) {
+        const result = await runGit(["checkout", "--", filePath]);
+        if (result.code !== 0) {
+          throw Object.assign(new Error(result.stderr || `git checkout failed for ${filePath}`), { code: "EGIT" });
+        }
+      } else {
+        const cleanResult = await runGit(["clean", "-fd", "--", filePath]);
+        if (cleanResult.code !== 0) {
+          throw Object.assign(new Error(cleanResult.stderr || `git clean failed for ${filePath}`), { code: "EGIT" });
+        }
+      }
     }
   }
 

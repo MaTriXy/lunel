@@ -10,7 +10,6 @@ import {
   Modal,
   Alert,
   ActionSheetIOS,
-  KeyboardAvoidingView,
   Keyboard,
   Platform,
 } from 'react-native';
@@ -71,7 +70,7 @@ function getStatusMeta(status: string, colors: any): { color: string; label: str
     D: { color: colors.terminal.red, label: 'D' },
     R: { color: colors.terminal.blue, label: 'R' },
     C: { color: colors.terminal.magenta, label: 'C' },
-    U: { color: colors.terminal.red, label: 'U' },
+    U: { color: colors.terminal.green, label: 'U' },
   };
   return map[status] ?? { color: colors.fg.subtle, label: status || '?' };
 }
@@ -141,9 +140,9 @@ function StatusBadge({ status, fonts, colors }: { status: string; fonts: any; co
   const meta = getStatusMeta(status, colors);
   return (
     <View style={{
-      width: 18,
-      height: 18,
-      borderRadius: 4,
+      width: 26,
+      height: 26,
+      borderRadius: 5,
       backgroundColor: meta.color + '22',
       alignItems: 'center',
       justifyContent: 'center',
@@ -200,11 +199,7 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
   const [commits, setCommits] = useState<GitCommit[]>([]);
   const [branches, setBranches] = useState<{ current: string; branches: string[] } | null>(null);
 
-  const [commitMessage, setCommitMessage] = useState('');
-  const [showCommitBar, setShowCommitBar] = useState(false);
   const [showCommitDetailsModal, setShowCommitDetailsModal] = useState(false);
-  const [showNewBranchModal, setShowNewBranchModal] = useState(false);
-  const [newBranchName, setNewBranchName] = useState('');
   const [selectedCommitDetails, setSelectedCommitDetails] = useState<GitCommitDetails | null>(null);
   const [selectedCommitFile, setSelectedCommitFile] = useState<string | null>(null);
   const [commitDetailsLoading, setCommitDetailsLoading] = useState(false);
@@ -228,12 +223,8 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
   const commitLimitRef = useRef(50);
   const [loadingMore, setLoadingMore] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const commitInputRef = useRef<TextInput>(null);
-  const branchInputRef = useRef<TextInput>(null);
 
   const dismissGitInputs = useCallback(() => {
-    commitInputRef.current?.blur();
-    branchInputRef.current?.blur();
     TextInput.State.currentlyFocusedInput?.()?.blur?.();
     Keyboard.dismiss();
   }, []);
@@ -320,15 +311,14 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
     }
   };
 
-  const handleCommit = async () => {
-    if (!commitMessage.trim() || actionLoading) return;
+  const handleCommit = async (rawMessage: string) => {
+    const message = rawMessage.trim();
+    if (!message || actionLoading) return;
     dismissGitInputs();
     setActionLoading(true);
     try {
-      await git.commit(commitMessage.trim());
-      setCommitMessage('');
-      setShowCommitBar(false);
-      showToast('Committed successfully');
+      await git.commit(message);
+      showToast('Committed');
       await loadAll();
     } catch (err) {
       showToast((err as ApiError).message || 'Failed to commit', 'error');
@@ -336,6 +326,26 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
       setActionLoading(false);
     }
   };
+
+  const openCommitPrompt = useCallback(() => {
+    dismissGitInputs();
+    if (actionLoading) return;
+
+    if (Platform.OS === 'ios' && typeof Alert.prompt === 'function') {
+      Alert.prompt(
+        'Commit',
+        'Enter commit message',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Commit', onPress: (value) => { void handleCommit(value ?? ''); } },
+        ],
+        'plain-text'
+      );
+      return;
+    }
+
+    Alert.alert('Commit', 'Native commit input prompt is currently available on iOS only.');
+  }, [dismissGitInputs, actionLoading, handleCommit]);
 
   const handlePull = async () => {
     setPullLoading(true);
@@ -392,24 +402,13 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
   };
 
   const handlePullLongPress = () => {
-    const options = ['Cancel', 'Merge (default)', 'Rebase', 'Fast-forward only'];
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        { options, cancelButtonIndex: 0 },
-        (i) => {
-          if (i === 1) handlePullWithStrategy('merge');
-          if (i === 2) handlePullWithStrategy('rebase');
-          if (i === 3) handlePullWithStrategy('ff-only');
-        }
-      );
-    } else {
-      Alert.alert('Pull options', undefined, [
-        { text: 'Merge (default)', onPress: () => handlePullWithStrategy('merge') },
-        { text: 'Rebase', onPress: () => handlePullWithStrategy('rebase') },
-        { text: 'Fast-forward only', onPress: () => handlePullWithStrategy('ff-only') },
-        { text: 'Cancel', style: 'cancel' },
-      ]);
-    }
+    Alert.alert('Pull options', undefined, [
+      { text: 'Pull', onPress: () => { void handlePull(); } },
+      { text: 'Merge', onPress: () => { void handlePullWithStrategy('merge'); } },
+      { text: 'Rebase', onPress: () => { void handlePullWithStrategy('rebase'); } },
+      { text: 'Fast-forward only', onPress: () => { void handlePullWithStrategy('ff-only'); } },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
 
   const handlePushWithOptions = async (force?: 'force-with-lease' | 'force') => {
@@ -489,13 +488,12 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
     ]);
   };
 
-  const handleCreateBranch = async () => {
-    if (!newBranchName.trim() || actionLoading) return;
+  const handleCreateBranch = async (rawBranchName: string) => {
+    const branchName = rawBranchName.trim();
+    if (!branchName || actionLoading) return;
     setActionLoading(true);
     try {
-      await git.checkout(newBranchName.trim(), true);
-      setNewBranchName('');
-      setShowNewBranchModal(false);
+      await git.checkout(branchName, true);
       await loadAll();
     } catch (err) {
       Alert.alert('Error', (err as ApiError).message || 'Failed to create branch');
@@ -503,6 +501,26 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
       setActionLoading(false);
     }
   };
+
+  const openCreateBranchPrompt = useCallback(() => {
+    dismissGitInputs();
+    if (actionLoading) return;
+
+    if (Platform.OS === 'ios' && typeof Alert.prompt === 'function') {
+      Alert.prompt(
+        'New Branch',
+        'Enter branch name',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Create', onPress: (value) => { void handleCreateBranch(value ?? ''); } },
+        ],
+        'plain-text'
+      );
+      return;
+    }
+
+    Alert.alert('New Branch', 'Native branch input prompt is currently available on iOS only.');
+  }, [dismissGitInputs, actionLoading, handleCreateBranch]);
 
   const handleOpenCommitDetails = async (hash: string) => {
     setCommitDetailsLoading(true);
@@ -608,9 +626,23 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
     letterSpacing: 0.8,
     textTransform: 'uppercase' as const,
   };
+  const sectionCountBadgeStyle = {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 6,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: colors.bg.raised,
+  };
+  const sectionCountTextStyle = {
+    fontSize: 12,
+    fontFamily: fonts.sans.medium,
+    color: colors.fg.default,
+  };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg.base }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <View style={{ flex: 1, backgroundColor: colors.bg.base }}>
       <Header
         title="Git"
         colors={colors}
@@ -631,10 +663,10 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
           borderBottomColor: colors.border.secondary,
         }}>
           {([
-            { key: 'changes', label: 'Changes', count: totalChanges },
-            { key: 'history', label: 'History', count: commits.length },
-            { key: 'branches', label: 'Branches', count: branches?.branches.length },
-          ] as { key: Tab; label: string; count?: number }[]).map((tab) => {
+            { key: 'changes', label: 'Changes' },
+            { key: 'history', label: 'History' },
+            { key: 'branches', label: 'Branches' },
+          ] as { key: Tab; label: string }[]).map((tab) => {
             const active = activeTab === tab.key;
             return (
               <TouchableOpacity
@@ -658,21 +690,6 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
                   }}>
                     {tab.label}
                   </Text>
-                  {tab.count != null && tab.count > 0 && (
-                    <View style={{
-                      minWidth: 16,
-                      height: 16,
-                      borderRadius: 8,
-                      backgroundColor: active ? colors.accent.default : colors.bg.raised,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      paddingHorizontal: 4,
-                    }}>
-                      <Text style={{ fontSize: typography.caption, fontFamily: fonts.sans.semibold, color: active ? '#fff' : colors.fg.muted }}>
-                        {tab.count != null && tab.count >= 100 ? '99+' : tab.count}
-                      </Text>
-                    </View>
-                  )}
                 </View>
               </TouchableOpacity>
             );
@@ -702,14 +719,19 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
           >
             {/* Staged section */}
             {gitStatus && gitStatus.staged.length > 0 && (
-              <View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: spacing[4], marginHorizontal: spacing[1] }}>
-                  <Text style={[sectionHeaderStyle, { color: colors.git.added, fontSize: 13 }]}>
-                    Staged · {gitStatus.staged.length}
-                  </Text>
-                  <TouchableOpacity onPress={handleUnstageAll} disabled={unstageAllLoading} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 7, paddingHorizontal: 8, paddingVertical: 5, backgroundColor: '#6b728018' }}>
-                    {unstageAllLoading ? <SpinnerIcon size={14} color={colors.fg.subtle} /> : <Minus size={14} color={colors.fg.subtle} strokeWidth={2} />}
-                    <Text style={{ fontSize: 13, fontFamily: fonts.sans.medium, color: colors.fg.subtle }}>Unstage all</Text>
+              <View style={{ marginBottom: spacing[2] }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing[2], marginBottom: spacing[3], marginHorizontal: spacing[1] }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={[sectionHeaderStyle, { color: colors.fg.default, fontSize: 13 }]}>
+                      Staged
+                    </Text>
+                    <View style={sectionCountBadgeStyle}>
+                      <Text style={sectionCountTextStyle}>{gitStatus.staged.length}</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity onPress={handleUnstageAll} disabled={unstageAllLoading} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 7, paddingHorizontal: 8, paddingVertical: 5, backgroundColor: colors.bg.raised }}>
+                    {unstageAllLoading ? <SpinnerIcon size={14} color={colors.fg.subtle} /> : <Minus size={14} color={colors.fg.default} strokeWidth={2} />}
+                    <Text style={{ fontSize: 12, fontFamily: fonts.sans.regular, color: colors.fg.default }}>Unstage all</Text>
                   </TouchableOpacity>
                 </View>
 
@@ -719,10 +741,8 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
                     const name = parts.pop()!;
                     const dir = parts.join('/');
                     return (
-                      <TouchableOpacity
+                      <View
                         key={file.path}
-                        onPress={() => handleUnstage([file.path])}
-                        activeOpacity={0.7}
                         style={{
                           flexDirection: 'row',
                           alignItems: 'center',
@@ -732,20 +752,26 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
                         <View style={{ width: 18, alignItems: 'center', justifyContent: 'center' }}>
                           <GitFileIcon filePath={file.path} colors={colors} />
                         </View>
-                        <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <Text numberOfLines={1} style={{ fontSize: typography.body, fontFamily: fonts.sans.regular, color: colors.fg.default, flexShrink: 1 }}>{name}</Text>
-                          {dir.length > 0 && <Text numberOfLines={1} style={{ fontSize: typography.caption, fontFamily: fonts.sans.regular, color: colors.fg.subtle, flexShrink: 2 }}>{dir}</Text>}
-                          <StatusBadge status={file.status} fonts={fonts} colors={colors} />
-                        </View>
+                        <ScrollView
+                          horizontal
+                          directionalLockEnabled
+                          showsHorizontalScrollIndicator={false}
+                          style={{ flex: 1, minWidth: 0 }}
+                          contentContainerStyle={{ alignItems: 'center', gap: 6, paddingRight: 6 }}
+                        >
+                          <Text style={{ fontSize: typography.body, fontFamily: fonts.sans.regular, color: colors.fg.default }}>{name}</Text>
+                          {dir.length > 0 && <Text style={{ fontSize: typography.caption, fontFamily: fonts.sans.regular, color: colors.fg.subtle }}>{dir}</Text>}
+                        </ScrollView>
                         <TouchableOpacity
                           onPress={() => handleUnstage([file.path])}
                           disabled={stagingPaths.has(file.path)}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          style={{ width: 26, height: 26, borderRadius: 5, backgroundColor: colors.git.deleted + '18', alignItems: 'center', justifyContent: 'center' }}
+                          style={{ width: 26, height: 26, borderRadius: 5, backgroundColor: colors.bg.raised, alignItems: 'center', justifyContent: 'center' }}
                         >
-                          {stagingPaths.has(file.path) ? <SpinnerIcon size={12} color={colors.git.deleted} /> : <Minus size={12} color={colors.git.deleted} strokeWidth={2.5} />}
+                          {stagingPaths.has(file.path) ? <SpinnerIcon size={12} color={colors.fg.subtle} /> : <Minus size={12} color={colors.fg.default} strokeWidth={2.5} />}
                         </TouchableOpacity>
-                      </TouchableOpacity>
+                        <StatusBadge status={file.status} fonts={fonts} colors={colors} />
+                      </View>
                     );
                   })}
                 </View>
@@ -755,18 +781,23 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
             {/* Unstaged / Untracked section */}
             {gitStatus && (gitStatus.unstaged.length > 0 || gitStatus.untracked.length > 0) && (
               <View style={{ marginBottom: spacing[3] }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: spacing[4], marginHorizontal: spacing[1] }}>
-                  <Text style={[sectionHeaderStyle, { color: colors.git.modified, fontSize: 13 }]}>
-                    Changes · {gitStatus.unstaged.length + gitStatus.untracked.length}
-                  </Text>
-                  <View style={{ flexDirection: 'row', gap: spacing[3] }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing[2], marginBottom: spacing[3], marginHorizontal: spacing[1] }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={[sectionHeaderStyle, { color: colors.fg.default, fontSize: 13, fontFamily: fonts.sans.medium }]}>
+                      Changes
+                    </Text>
+                    <View style={sectionCountBadgeStyle}>
+                      <Text style={sectionCountTextStyle}>{gitStatus.unstaged.length + gitStatus.untracked.length}</Text>
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing[2] }}>
                     <TouchableOpacity onPress={() => handleDiscard()} disabled={discardAllLoading} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 7, paddingHorizontal: 8, paddingVertical: 5, backgroundColor: colors.git.deleted + '18' }}>
                       {discardAllLoading ? <SpinnerIcon size={14} color={colors.git.deleted} /> : <Undo size={14} color={colors.git.deleted} strokeWidth={2} />}
-                      <Text style={{ fontSize: 13, fontFamily: fonts.sans.medium, color: colors.git.deleted }}>Discard all</Text>
+                      <Text style={{ fontSize: 12, fontFamily: fonts.sans.regular, color: colors.git.deleted }}>Discard all</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={handleStageAll} disabled={stageAllLoading} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 7, paddingHorizontal: 8, paddingVertical: 5, backgroundColor: colors.git.added + '18' }}>
-                      {stageAllLoading ? <SpinnerIcon size={14} color={colors.git.added} /> : <Plus size={14} color={colors.git.added} strokeWidth={2} />}
-                      <Text style={{ fontSize: 13, fontFamily: fonts.sans.medium, color: colors.git.added }}>Stage all</Text>
+                    <TouchableOpacity onPress={handleStageAll} disabled={stageAllLoading} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 7, paddingHorizontal: 8, paddingVertical: 5, backgroundColor: colors.bg.raised }}>
+                      {stageAllLoading ? <SpinnerIcon size={14} color={colors.fg.subtle} /> : <Plus size={14} color={colors.fg.subtle} strokeWidth={2} />}
+                      <Text style={{ fontSize: 12, fontFamily: fonts.sans.regular, color: colors.fg.default }}>Stage all</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -777,10 +808,8 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
                     const name = parts.pop()!;
                     const dir = parts.join('/');
                     return (
-                      <TouchableOpacity
+                      <View
                         key={file.path}
-                        onPress={() => handleStage([file.path])}
-                        activeOpacity={0.7}
                         style={{
                           flexDirection: 'row',
                           alignItems: 'center',
@@ -790,16 +819,21 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
                         <View style={{ width: 18, alignItems: 'center', justifyContent: 'center' }}>
                           <GitFileIcon filePath={file.path} colors={colors} />
                         </View>
-                        <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <Text numberOfLines={1} style={{ fontSize: typography.body, fontFamily: fonts.sans.regular, color: colors.fg.default, flexShrink: 1 }}>{name}</Text>
-                          {dir.length > 0 && <Text numberOfLines={1} style={{ fontSize: typography.caption, fontFamily: fonts.sans.regular, color: colors.fg.subtle, flexShrink: 2 }}>{dir}</Text>}
-                          <StatusBadge status={file.status} fonts={fonts} colors={colors} />
-                        </View>
+                        <ScrollView
+                          horizontal
+                          directionalLockEnabled
+                          showsHorizontalScrollIndicator={false}
+                          style={{ flex: 1, minWidth: 0 }}
+                          contentContainerStyle={{ alignItems: 'center', gap: 6, paddingRight: 6 }}
+                        >
+                          <Text style={{ fontSize: typography.body, fontFamily: fonts.sans.regular, color: colors.fg.default }}>{name}</Text>
+                          {dir.length > 0 && <Text style={{ fontSize: typography.caption, fontFamily: fonts.sans.regular, color: colors.fg.subtle }}>{dir}</Text>}
+                        </ScrollView>
                         <TouchableOpacity
                           onPress={() => handleDiscard([file.path])}
                           disabled={discardingPaths.has(file.path)}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          style={{ width: 26, height: 26, borderRadius: 5, backgroundColor: colors.git.deleted + '18', alignItems: 'center', justifyContent: 'center', marginRight: 6 }}
+                          style={{ width: 26, height: 26, borderRadius: 5, backgroundColor: colors.git.deleted + '18', alignItems: 'center', justifyContent: 'center', marginRight: 1 }}
                         >
                           {discardingPaths.has(file.path) ? <SpinnerIcon size={11} color={colors.git.deleted} /> : <Undo size={11} color={colors.git.deleted} strokeWidth={2} />}
                         </TouchableOpacity>
@@ -807,11 +841,12 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
                           onPress={() => handleStage([file.path])}
                           disabled={stagingPaths.has(file.path)}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          style={{ width: 26, height: 26, borderRadius: 5, backgroundColor: colors.git.added + '18', alignItems: 'center', justifyContent: 'center' }}
+                          style={{ width: 26, height: 26, borderRadius: 5, backgroundColor: colors.bg.raised, alignItems: 'center', justifyContent: 'center' }}
                         >
-                          {stagingPaths.has(file.path) ? <SpinnerIcon size={12} color={colors.git.added} /> : <Plus size={12} color={colors.git.added} strokeWidth={2.5} />}
+                          {stagingPaths.has(file.path) ? <SpinnerIcon size={12} color={colors.fg.subtle} /> : <Plus size={12} color={colors.fg.default} strokeWidth={2.5} />}
                         </TouchableOpacity>
-                      </TouchableOpacity>
+                        <StatusBadge status={file.status} fonts={fonts} colors={colors} />
+                      </View>
                     );
                   })}
                   {gitStatus.untracked.map((path) => {
@@ -819,38 +854,45 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
                     const name = parts.pop()!;
                     const dir = parts.join('/');
                     return (
-                      <TouchableOpacity
+                      <View
                         key={path}
-                        onPress={() => handleStage([path])}
-                        activeOpacity={0.7}
                         style={{
                           flexDirection: 'row',
                           alignItems: 'center',
                           gap: spacing[2],
                         }}
                       >
-                        <View style={{ width: 18, height: 18, borderRadius: 4, backgroundColor: '#6b728022', alignItems: 'center', justifyContent: 'center' }}>
-                          <Text style={{ fontSize: typography.body, fontFamily: fonts.mono.regular, color: '#9ca3af' }}>?</Text>
-                        </View>
                         <View style={{ width: 18, alignItems: 'center', justifyContent: 'center' }}>
                           <GitFileIcon filePath={path} colors={colors} />
                         </View>
-                        <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <Text numberOfLines={1} style={{ fontSize: typography.body, fontFamily: fonts.sans.regular, color: colors.fg.muted, flexShrink: 1 }}>{name}</Text>
-                          {dir.length > 0 && <Text numberOfLines={1} style={{ fontSize: typography.caption, fontFamily: fonts.sans.regular, color: colors.fg.subtle, flexShrink: 2 }}>{dir}</Text>}
-                        </View>
-                        <Text style={{ fontSize: typography.caption, fontFamily: fonts.sans.medium, color: colors.fg.subtle, marginRight: 6 }}>
-                          untracked
-                        </Text>
+                        <ScrollView
+                          horizontal
+                          directionalLockEnabled
+                          showsHorizontalScrollIndicator={false}
+                          style={{ flex: 1, minWidth: 0 }}
+                          contentContainerStyle={{ alignItems: 'center', gap: 6, paddingRight: 6 }}
+                        >
+                          <Text style={{ fontSize: typography.body, fontFamily: fonts.sans.regular, color: colors.fg.muted }}>{name}</Text>
+                          {dir.length > 0 && <Text style={{ fontSize: typography.caption, fontFamily: fonts.sans.regular, color: colors.fg.subtle }}>{dir}</Text>}
+                        </ScrollView>
+                        <TouchableOpacity
+                          onPress={() => handleDiscard([path])}
+                          disabled={discardingPaths.has(path)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          style={{ width: 26, height: 26, borderRadius: 5, backgroundColor: colors.git.deleted + '18', alignItems: 'center', justifyContent: 'center', marginRight: 1 }}
+                        >
+                          {discardingPaths.has(path) ? <SpinnerIcon size={11} color={colors.git.deleted} /> : <Undo size={11} color={colors.git.deleted} strokeWidth={2} />}
+                        </TouchableOpacity>
                         <TouchableOpacity
                           onPress={() => handleStage([path])}
-                          disabled={stagingPaths.has(path)}
+                          disabled={stagingPaths.has(path) || discardingPaths.has(path)}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          style={{ width: 26, height: 26, borderRadius: 5, backgroundColor: colors.git.added + '18', alignItems: 'center', justifyContent: 'center' }}
+                          style={{ width: 26, height: 26, borderRadius: 5, backgroundColor: colors.bg.raised, alignItems: 'center', justifyContent: 'center' }}
                         >
-                          {stagingPaths.has(path) ? <SpinnerIcon size={12} color={colors.git.added} /> : <Plus size={12} color={colors.git.added} strokeWidth={2.5} />}
+                          {stagingPaths.has(path) ? <SpinnerIcon size={12} color={colors.fg.subtle} /> : <Plus size={12} color={colors.fg.default} strokeWidth={2.5} />}
                         </TouchableOpacity>
-                      </TouchableOpacity>
+                        <StatusBadge status="U" fonts={fonts} colors={colors} />
+                      </View>
                     );
                   })}
                 </View>
@@ -1079,8 +1121,8 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
                   {branch}
                 </Text>
                 {isCurrent && (
-                  <View style={{ paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, backgroundColor: colors.git.added + '20' }}>
-                    <Text style={{ fontSize: typography.caption, fontFamily: fonts.sans.medium, color: colors.git.added }}>Current</Text>
+                  <View style={{ paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' }}>
+                    <Circle size={8} color={colors.git.added} fill={colors.git.added} strokeWidth={2} />
                   </View>
                 )}
                 {!isCurrent && (
@@ -1106,68 +1148,7 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
           borderTopColor: colors.border.secondary,
           marginTop: 'auto',
         }}>
-          {showCommitBar ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[3], paddingVertical: 6, gap: spacing[2] }}>
-              <TextInput
-                ref={commitInputRef}
-                autoFocus
-                style={{
-                  flex: 1,
-                  fontSize: 13,
-                  fontFamily: fonts.sans.regular,
-                  color: colors.fg.default,
-                  minHeight: 32,
-                  paddingVertical: Platform.OS === 'android' ? 6 : 0,
-                  textAlignVertical: 'center',
-                }}
-                value={commitMessage}
-                onChangeText={setCommitMessage}
-                placeholder="Commit message…"
-                placeholderTextColor={colors.fg.subtle}
-                autoCapitalize="none"
-                autoCorrect={false}
-                returnKeyType="done"
-                onSubmitEditing={handleCommit}
-              />
-              <TouchableOpacity onPress={() => { dismissGitInputs(); setShowCommitBar(false); setCommitMessage(''); }} style={{ width: 30, minHeight: 30, borderRadius: 9, backgroundColor: colors.bg.raised, alignItems: 'center', justifyContent: 'center' }}>
-                <X size={13} color={colors.fg.muted} strokeWidth={2} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handleCommit} disabled={!commitMessage.trim() || actionLoading} style={{ width: 30, minHeight: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: commitMessage.trim() ? colors.git.added + '18' : colors.bg.raised }}>
-                {actionLoading ? <SpinnerIcon size={14} color={colors.git.added} /> : <ArrowUp size={14} color={commitMessage.trim() ? colors.git.added : colors.fg.subtle} strokeWidth={2.5} />}
-              </TouchableOpacity>
-            </View>
-          ) : showNewBranchModal ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[3], paddingVertical: 6, gap: spacing[2] }}>
-              <TextInput
-                ref={branchInputRef}
-                autoFocus
-                style={{
-                  flex: 1,
-                  fontSize: 13,
-                  fontFamily: fonts.sans.regular,
-                  color: colors.fg.default,
-                  minHeight: 32,
-                  paddingVertical: Platform.OS === 'android' ? 6 : 0,
-                  textAlignVertical: 'center',
-                }}
-                value={newBranchName}
-                onChangeText={setNewBranchName}
-                placeholder="feature/my-branch"
-                placeholderTextColor={colors.fg.subtle}
-                autoCapitalize="none"
-                autoCorrect={false}
-                returnKeyType="done"
-                onSubmitEditing={handleCreateBranch}
-              />
-              <TouchableOpacity onPress={() => { dismissGitInputs(); setShowNewBranchModal(false); setNewBranchName(''); }} style={{ width: 30, minHeight: 30, borderRadius: 9, backgroundColor: colors.bg.raised, alignItems: 'center', justifyContent: 'center' }}>
-                <X size={13} color={colors.fg.muted} strokeWidth={2} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handleCreateBranch} disabled={!newBranchName.trim() || actionLoading} style={{ width: 30, minHeight: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: newBranchName.trim() ? colors.git.added + '18' : colors.bg.raised }}>
-                {actionLoading ? <SpinnerIcon size={14} color={colors.git.added} /> : <ArrowUp size={14} color={newBranchName.trim() ? colors.git.added : colors.fg.subtle} strokeWidth={2.5} />}
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[3], paddingVertical: 6, gap: spacing[2] }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing[3], paddingVertical: 6, gap: spacing[2] }}>
               <TouchableOpacity onPress={() => setActiveTab('branches')} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                 <GitBranch size={13} color={colors.git.added} strokeWidth={2} />
                 <Text style={{ fontSize: 13, fontFamily: fonts.mono.regular, color: colors.fg.default }} numberOfLines={1}>{gitStatus.branch}</Text>
@@ -1189,31 +1170,30 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
 
               {activeTab === 'branches' ? (
                 <TouchableOpacity
-                  onPress={() => setShowNewBranchModal(true)}
-                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 10, height: 32, borderRadius: 8, backgroundColor: colors.git.added + '18' }}
+                  onPress={openCreateBranchPrompt}
+                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 10, height: 32, borderRadius: 8, backgroundColor: colors.bg.raised }}
                 >
-                  <Plus size={13} color={colors.git.added} strokeWidth={2} />
-                  <Text style={{ fontSize: 13, fontFamily: fonts.sans.medium, color: colors.git.added }}>New Branch</Text>
+                  <Plus size={13} color={colors.fg.default} strokeWidth={2} />
+                  <Text style={{ fontSize: 13, fontFamily: fonts.sans.medium, color: colors.fg.default }}>New Branch</Text>
                 </TouchableOpacity>
               ) : (
                 <>
-                  <TouchableOpacity onPress={handlePullLongPress} disabled={pullLoading || pushLoading} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, width: 72, height: 32, borderRadius: 8, backgroundColor: colors.git.info + '18' }}>
-                    {pullLoading ? <SpinnerIcon size={13} color={colors.git.info} /> : <><ArrowDown size={13} color={colors.git.info} strokeWidth={2} /><Text style={{ fontSize: 13, fontFamily: fonts.sans.medium, color: colors.git.info }}>Pull</Text></>}
+                  <TouchableOpacity onPress={handlePullLongPress} disabled={pullLoading || pushLoading} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, width: 72, height: 32, borderRadius: 8, backgroundColor: colors.bg.raised }}>
+                    {pullLoading ? <SpinnerIcon size={13} color={colors.fg.subtle} /> : <><ArrowDown size={13} color={colors.fg.default} strokeWidth={2} /><Text style={{ fontSize: 13, fontFamily: fonts.sans.medium, color: colors.fg.default }}>Pull</Text></>}
                   </TouchableOpacity>
                   {gitStatus.staged.length > 0 ? (
-                    <TouchableOpacity onPress={() => { dismissGitInputs(); setShowCommitBar(true); }} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 14, height: 32, borderRadius: 8, backgroundColor: colors.git.modified + '18' }}>
-                      <GitCommitIcon size={13} color={colors.git.modified} strokeWidth={2} />
-                      <Text style={{ fontSize: 13, fontFamily: fonts.sans.medium, color: colors.git.modified }}>Commit</Text>
+                    <TouchableOpacity onPress={openCommitPrompt} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 14, height: 32, borderRadius: 8, backgroundColor: colors.bg.raised }}>
+                      <GitCommitIcon size={13} color={colors.fg.default} strokeWidth={2} />
+                      <Text style={{ fontSize: 13, fontFamily: fonts.sans.medium, color: colors.fg.default }}>Commit</Text>
                     </TouchableOpacity>
                   ) : (
-                    <TouchableOpacity onPress={handlePushLongPress} disabled={pushLoading || gitStatus.ahead === 0} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, width: 72, height: 32, borderRadius: 8, backgroundColor: colors.git.added + '18', opacity: gitStatus.ahead === 0 ? 0.4 : 1 }}>
-                      {pushLoading ? <SpinnerIcon size={13} color={colors.git.added} /> : <><ArrowUp size={13} color={gitStatus.ahead > 0 ? colors.git.added : colors.fg.muted} strokeWidth={2} /><Text style={{ fontSize: 13, fontFamily: fonts.sans.medium, color: gitStatus.ahead > 0 ? colors.git.added : colors.fg.muted }}>Push</Text></>}
+                    <TouchableOpacity onPress={handlePushLongPress} disabled={pushLoading || gitStatus.ahead === 0} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, width: 72, height: 32, borderRadius: 8, backgroundColor: colors.bg.raised, opacity: gitStatus.ahead === 0 ? 0.4 : 1 }}>
+                      {pushLoading ? <SpinnerIcon size={13} color={colors.fg.subtle} /> : <><ArrowUp size={13} color={gitStatus.ahead > 0 ? colors.fg.default : colors.fg.muted} strokeWidth={2} /><Text style={{ fontSize: 13, fontFamily: fonts.sans.medium, color: gitStatus.ahead > 0 ? colors.fg.default : colors.fg.muted }}>Push</Text></>}
                     </TouchableOpacity>
                   )}
                 </>
               )}
             </View>
-          )}
         </View>
       )}
 
@@ -1413,7 +1393,7 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
           </View>
         </View>
       )}
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
