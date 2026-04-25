@@ -145,6 +145,11 @@ export class CodexProvider implements AIProvider {
     console.log(`[codex] ${message}${suffix}`);
   }
 
+  private debugHistory(message: string, fields: Record<string, unknown>): void {
+    if (!DEBUG_MODE) return;
+    console.log(`[codex-history] ${message} ${JSON.stringify(fields)}`);
+  }
+
   async init(): Promise<void> {
     if (DEBUG_MODE) console.log("Starting Codex app-server...");
 
@@ -1631,12 +1636,12 @@ export class CodexProvider implements AIProvider {
       };
     });
 
-    console.log(`[codex-history] thread/read summary ${JSON.stringify({
+    this.debugHistory("thread/read summary", {
       sessionId,
       threadId: this.readString(threadObject.id) ?? null,
       turnCount: turns.length,
       turnSummaries,
-    })}`);
+    });
   }
 
   private decodeStoredToolLikePart(

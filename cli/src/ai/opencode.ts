@@ -310,6 +310,21 @@ export class OpenCodeProvider implements AIProvider {
   private knownPendingPermissionIds = new Set<string>();
   private knownPendingQuestionIds = new Set<string>();
 
+  private debugLog(message: string, ...args: unknown[]): void {
+    if (!VERBOSE_AI_LOGS) return;
+    console.log(message, ...args);
+  }
+
+  private debugWarn(message: string, ...args: unknown[]): void {
+    if (!VERBOSE_AI_LOGS) return;
+    console.warn(message, ...args);
+  }
+
+  private debugError(message: string, ...args: unknown[]): void {
+    if (!VERBOSE_AI_LOGS) return;
+    console.error(message, ...args);
+  }
+
   async init(): Promise<void> {
     const opencodeUsername = "lunel";
     const opencodePassword = crypto.randomBytes(32).toString("base64url");
@@ -625,12 +640,12 @@ export class OpenCodeProvider implements AIProvider {
             path: { id: this.lastActiveSessionId },
           });
           if (checkResp.error) {
-            console.warn(`[sse] OpenCode session ${this.lastActiveSessionId} was garbage-collected. Notifying app.`);
+            this.debugWarn(`[sse] OpenCode session ${this.lastActiveSessionId} was garbage-collected. Notifying app.`);
             const gcSessionId = this.lastActiveSessionId;
             this.lastActiveSessionId = null;
             this.emitter?.({ type: "session_gc", properties: { sessionId: gcSessionId } });
           } else {
-            console.log(`[sse] Active session ${this.lastActiveSessionId} still valid.`);
+            this.debugLog(`[sse] Active session ${this.lastActiveSessionId} still valid.`);
           }
         }
 
@@ -640,7 +655,7 @@ export class OpenCodeProvider implements AIProvider {
 
         const events = await this.client!.event.subscribe();
         if (attempt > 0) {
-          console.log(`[sse] reconnected after ${attempt} attempt(s)`);
+          this.debugLog(`[sse] reconnected after ${attempt} attempt(s)`);
         }
         attempt = 0;
 
@@ -657,12 +672,12 @@ export class OpenCodeProvider implements AIProvider {
               : parsed;
 
           if (!base || typeof base.type !== "string") {
-            console.warn("[sse] Dropped malformed event:", redactSensitive(JSON.stringify(parsed).substring(0, 200)));
+            this.debugWarn("[sse] Dropped malformed event:", redactSensitive(JSON.stringify(parsed).substring(0, 200)));
             continue;
           }
 
           if (base.type !== "server.heartbeat") {
-            console.log("[sse]", base.type);
+            this.debugLog("[sse]", base.type);
           }
           const normalizedEvent = normalizeOpenCodeEvent({
             type: base.type,
@@ -672,18 +687,18 @@ export class OpenCodeProvider implements AIProvider {
           this.emitter?.(normalizedEvent);
         }
 
-        console.log("[sse] Event stream ended, reconnecting...");
+        this.debugLog("[sse] Event stream ended, reconnecting...");
         attempt++;
       } catch (err) {
         if (this.shuttingDown) return;
         attempt++;
         const delay = backoffMs(attempt - 1);
-        console.error(
+        this.debugError(
           `[sse] Stream error (attempt ${attempt}/${SSE_MAX_RETRIES}): ${(err as Error).message}. Retrying in ${delay}ms`
         );
 
         if (attempt >= SSE_MAX_RETRIES) {
-          console.error("[sse] Max retries reached. Sending error event to app and giving up.");
+          this.debugError("[sse] Max retries reached. Sending error event to app and giving up.");
           this.emitter?.({
             type: "sse_dead",
             properties: { error: (err as Error).message, attempts: attempt },
@@ -792,9 +807,9 @@ export class OpenCodeProvider implements AIProvider {
             });
           }
         }
-        console.log(`[sse] Re-synced messages for busy session ${sessionId} after reconnect`);
+        this.debugLog(`[sse] Re-synced messages for busy session ${sessionId} after reconnect`);
       } catch (err) {
-        console.warn(`[sse] Failed to refresh messages for busy session ${sessionId}:`, (err as Error).message);
+        this.debugWarn(`[sse] Failed to refresh messages for busy session ${sessionId}:`, (err as Error).message);
       }
     }
   }
