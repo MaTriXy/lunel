@@ -3084,6 +3084,14 @@ async function processMessage(message: Message): Promise<Response> {
             break;
           case "createSession":  result = await aiManager.createSession(backend, payload.title as string | undefined); break;
           case "listSessions":   result = await aiManager.listAllSessions(); break;
+          case "syncState": {
+            const rawSessionIds = payload.sessionIds as Record<string, unknown> | undefined;
+            result = await aiManager.syncState({
+              opencode: Array.isArray(rawSessionIds?.opencode) ? rawSessionIds.opencode.filter((id): id is string => typeof id === "string") : undefined,
+              codex: Array.isArray(rawSessionIds?.codex) ? rawSessionIds.codex.filter((id): id is string => typeof id === "string") : undefined,
+            });
+            break;
+          }
           case "getSession":     result = await aiManager.getSession(backend, payload.id as string); break;
           case "deleteSession":  result = await aiManager.deleteSession(backend, payload.id as string); break;
           case "renameSession":  result = await aiManager.renameSession(backend, payload.id as string, payload.title as string); break;

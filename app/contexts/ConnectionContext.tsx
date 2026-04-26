@@ -924,6 +924,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
             generation,
             reason,
           });
+          v2TransportRef.current = null;
           if (manualDisconnectRef.current || reconnectingRef.current) return;
           void runReconnectLoopRef.current?.('transport_closed');
         },
@@ -1568,19 +1569,24 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
       logger.info('connection', 'app state changed', {
         nextState,
         status,
+        hasTransport: Boolean(v2TransportRef.current),
         discoveredPorts: discoveredPortsRef.current,
       });
       if (nextState === 'active') {
         if (status === 'connected' && discoveredPortsRef.current.length > 0) {
           startPortServers(discoveredPortsRef.current);
         }
-        if (status !== 'connected' && !manualDisconnectRef.current && !reconnectingRef.current) {
-          if (sessionPasswordRef.current) {
-            logger.info('connection', 'app returned active while disconnected; retrying reconnect from memory');
+        if (!manualDisconnectRef.current && sessionPasswordRef.current && !reconnectingRef.current) {
+          const needsReconnect = status !== 'connected' || !v2TransportRef.current;
+          if (needsReconnect) {
+            logger.info('connection', 'app returned active with missing connection; retrying reconnect from memory', {
+              status,
+              hasTransport: Boolean(v2TransportRef.current),
+            });
             void runReconnectLoop('app_active');
-          } else {
-            logger.info('connection', 'app returned active without in-memory session; skipping automatic reconnect');
           }
+        } else if (!sessionPasswordRef.current) {
+          logger.info('connection', 'app returned active without in-memory session; skipping automatic reconnect');
         }
         return;
       }

@@ -10,6 +10,7 @@ import type {
   AIProvider,
   AiEventEmitter,
   CodexPromptOptions,
+  AiSyncState,
   FileAttachment,
   ModelSelector,
   MessageInfo,
@@ -385,6 +386,66 @@ export class CodexProvider implements AIProvider {
     }
 
     return { messages: session.messages };
+  }
+
+  async syncState(sessionIds: string[] = []): Promise<AiSyncState> {
+    await this.listSessions().catch(() => ({ sessions: [] }));
+
+    const messageSessionIds = new Set(sessionIds);
+    for (const session of this.sessions.values()) {
+      if (session.activeTurnId) messageSessionIds.add(session.id);
+    }
+    for (const pending of this.pendingPermissionRequestIds.values()) {
+      if (pending.sessionId) messageSessionIds.add(pending.sessionId);
+    }
+    for (const pending of this.pendingQuestionRequestIds.values()) {
+      if (pending.sessionId) messageSessionIds.add(pending.sessionId);
+    }
+
+    const messages: Record<string, MessageInfo[]> = {};
+    const statuses: AiSyncState["statuses"] = [];
+    await Promise.allSettled(Array.from(messageSessionIds).map(async (sessionId) => {
+      const response = await this.getMessages(sessionId);
+      messages[sessionId] = response.messages;
+
+      const session = this.sessions.get(sessionId);
+      if (!session) return;
+
+      const activeTurnId = await this.resolveInFlightTurnId(sessionId).catch(() => undefined);
+      session.activeTurnId = activeTurnId;
+      if (activeTurnId) {
+        statuses.push({
+          sessionID: sessionId,
+          status: { type: "running", activeTurnId },
+        });
+      }
+    }));
+
+    return {
+      sessions: Array.from(this.sessions.values()).map((session) => this.toSessionInfo(session)),
+      statuses,
+      messages,
+      pendingPermissions: Array.from(this.pendingPermissionRequestIds.entries()).map(([id, pending]) => ({
+        id,
+        sessionID: pending.sessionId,
+        messageID: pending.messageId,
+        callID: pending.callId,
+        type: pending.method,
+        title: pending.method,
+        metadata: { method: pending.method },
+      })),
+      pendingQuestions: Array.from(this.pendingQuestionRequestIds.entries()).map(([id, pending]) => ({
+        id,
+        sessionID: pending.sessionId,
+        questions: [],
+        tool: {
+          ...(pending.messageId ? { messageID: pending.messageId } : {}),
+          ...(pending.callId ? { callID: pending.callId } : {}),
+        },
+      })),
+      statusAuthoritative: true,
+      generatedAt: Date.now(),
+    };
   }
 
   async prompt(

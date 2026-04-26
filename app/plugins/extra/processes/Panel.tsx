@@ -59,6 +59,8 @@ function ProcessesPanel({ instanceId, isActive }: PluginPanelProps) {
   const processesCacheLoadedRef = useRef(false);
   const processesCacheSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const processListRef = useRef<ProcessInfo[]>([]);
+  const processListRequestIdRef = useRef(0);
+  const processOutputRequestIdRef = useRef(0);
 
   // Spawn form state
   const [showSpawnForm, setShowSpawnForm] = useState(false);
@@ -75,15 +77,20 @@ function ProcessesPanel({ instanceId, isActive }: PluginPanelProps) {
       return;
     }
 
+    const requestId = processListRequestIdRef.current + 1;
+    processListRequestIdRef.current = requestId;
     try {
       setError(null);
       setLoading(processListRef.current.length === 0);
       const result = await processApi.list();
+      if (processListRequestIdRef.current !== requestId) return;
       setProcessList(result);
     } catch (err) {
+      if (processListRequestIdRef.current !== requestId) return;
       const message = err instanceof ApiError ? err.message : 'Failed to load processes';
       if (processListRef.current.length === 0) setError(message);
     } finally {
+      if (processListRequestIdRef.current !== requestId) return;
       setLoading(false);
     }
   }, [isConnected, processApi]);
@@ -162,12 +169,21 @@ function ProcessesPanel({ instanceId, isActive }: PluginPanelProps) {
   useEffect(() => {
     if (selectedProcess) {
       if (!isConnected) return;
+      const requestId = processOutputRequestIdRef.current + 1;
+      processOutputRequestIdRef.current = requestId;
       setOutputLoading(true);
       processApi.getOutput(selectedProcess.channel)
-        .then(output => setProcessOutput(output))
-        .catch(() => setProcessOutput(''))
-        .finally(() => setOutputLoading(false));
+        .then(output => {
+          if (processOutputRequestIdRef.current === requestId) setProcessOutput(output);
+        })
+        .catch(() => {
+          if (processOutputRequestIdRef.current === requestId) setProcessOutput('');
+        })
+        .finally(() => {
+          if (processOutputRequestIdRef.current === requestId) setOutputLoading(false);
+        });
     } else {
+      processOutputRequestIdRef.current += 1;
       setProcessOutput('');
     }
   }, [isConnected, processApi, selectedProcess]);
@@ -222,13 +238,17 @@ function ProcessesPanel({ instanceId, isActive }: PluginPanelProps) {
 
   const refreshOutput = async () => {
     if (!selectedProcess) return;
+    const requestId = processOutputRequestIdRef.current + 1;
+    processOutputRequestIdRef.current = requestId;
     setOutputLoading(true);
     try {
       const output = await processApi.getOutput(selectedProcess.channel);
+      if (processOutputRequestIdRef.current !== requestId) return;
       setProcessOutput(output);
     } catch {
       // Ignore errors
     } finally {
+      if (processOutputRequestIdRef.current !== requestId) return;
       setOutputLoading(false);
     }
   };

@@ -48,6 +48,21 @@ export interface ProviderInfo {
   [key: string]: unknown;
 }
 
+export interface AiSessionStatus {
+  sessionID: string;
+  status: Record<string, unknown> | string;
+}
+
+export interface AiSyncState {
+  sessions: unknown[];
+  statuses: AiSessionStatus[];
+  messages: Record<string, MessageInfo[]>;
+  pendingPermissions?: Record<string, unknown>[];
+  pendingQuestions?: Record<string, unknown>[];
+  statusAuthoritative?: boolean;
+  generatedAt: number;
+}
+
 /**
  * Every AI backend (OpenCode, Codex, …) implements this interface.
  * Method names map 1-to-1 with the "ai" namespace actions in index.ts.
@@ -77,6 +92,9 @@ export interface AIProvider {
 
   // Messages
   getMessages(sessionId: string): Promise<{ messages: MessageInfo[] }>;
+
+  // Authoritative app rehydration snapshot after reconnect.
+  syncState?(sessionIds?: string[]): Promise<AiSyncState>;
 
   // Interaction — prompt is fire-and-forget; results come via emitter
   prompt(

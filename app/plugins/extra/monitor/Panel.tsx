@@ -169,6 +169,7 @@ function MonitorPanel({ instanceId, isActive }: PluginPanelProps) {
   const monitorCacheLoadedRef = useRef(false);
   const monitorCacheSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const systemInfoRef = useRef<SystemInfo | null>(null);
+  const systemInfoRequestIdRef = useRef(0);
 
   const getUsageColor = useCallback((percent: number): string => {
     if (percent < 50) return colors.terminal.green;
@@ -177,14 +178,19 @@ function MonitorPanel({ instanceId, isActive }: PluginPanelProps) {
   }, [colors.terminal.green, colors.terminal.red, colors.terminal.yellow]);
   const loadSystemInfo = useCallback(async () => {
     if (!isConnected) { if (!systemInfoRef.current) setLoading(false); return; }
+    const requestId = systemInfoRequestIdRef.current + 1;
+    systemInfoRequestIdRef.current = requestId;
     try {
       setError(null);
       setLoading(!systemInfoRef.current);
       const result = await monitorApi.system();
+      if (systemInfoRequestIdRef.current !== requestId) return;
       setSystemInfo(result);
     } catch (err) {
+      if (systemInfoRequestIdRef.current !== requestId) return;
       if (!systemInfoRef.current) setError(err instanceof ApiError ? err.message : 'Failed to load system info');
     } finally {
+      if (systemInfoRequestIdRef.current !== requestId) return;
       setLoading(false);
     }
   }, [isConnected, monitorApi]);

@@ -227,6 +227,11 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
   const gitCacheLoadedRef = useRef(false);
   const gitCacheSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasGitSnapshotRef = useRef(false);
+  const gitStatusRequestIdRef = useRef(0);
+  const gitCommitsRequestIdRef = useRef(0);
+  const gitBranchesRequestIdRef = useRef(0);
+  const commitDetailsRequestIdRef = useRef(0);
+  const changeDiffRequestIdRef = useRef(0);
 
   const dismissGitInputs = useCallback(() => {
     TextInput.State.currentlyFocusedInput?.()?.blur?.();
@@ -235,11 +240,15 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
 
   const loadStatus = useCallback(async () => {
     if (!isConnected) return;
+    const requestId = gitStatusRequestIdRef.current + 1;
+    gitStatusRequestIdRef.current = requestId;
     try {
       const status = await git.status();
+      if (gitStatusRequestIdRef.current !== requestId) return;
       setGitStatus(status);
       setError(null);
     } catch (err) {
+      if (gitStatusRequestIdRef.current !== requestId) return;
       const apiError = err as ApiError;
       setError(apiError.code === 'ENOTGIT' ? 'Not a git repository' : (apiError.message || 'Failed to load status'));
     }
@@ -247,8 +256,11 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
 
   const loadCommits = useCallback(async (limit?: number) => {
     if (!isConnected) return;
+    const requestId = gitCommitsRequestIdRef.current + 1;
+    gitCommitsRequestIdRef.current = requestId;
     try {
       const log = await git.log(limit ?? commitLimitRef.current);
+      if (gitCommitsRequestIdRef.current !== requestId) return;
       setCommits(log);
     } catch { /* silent */ }
   }, [isConnected, git]);
@@ -259,7 +271,10 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
     setCommitLimit(nextLimit);
     setLoadingMore(true);
     try {
+      const requestId = gitCommitsRequestIdRef.current + 1;
+      gitCommitsRequestIdRef.current = requestId;
       const log = await git.log(nextLimit);
+      if (gitCommitsRequestIdRef.current !== requestId) return;
       setCommits(log);
     } catch { /* silent */ }
     setLoadingMore(false);
@@ -267,8 +282,11 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
 
   const loadBranches = useCallback(async () => {
     if (!isConnected) return;
+    const requestId = gitBranchesRequestIdRef.current + 1;
+    gitBranchesRequestIdRef.current = requestId;
     try {
       const data = await git.branches();
+      if (gitBranchesRequestIdRef.current !== requestId) return;
       setBranches(data);
     } catch { /* silent */ }
   }, [isConnected, git]);
@@ -598,22 +616,29 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
   }, [dismissGitInputs, actionLoading, handleCreateBranch]);
 
   const handleOpenCommitDetails = async (hash: string) => {
+    const requestId = commitDetailsRequestIdRef.current + 1;
+    commitDetailsRequestIdRef.current = requestId;
     setCommitDetailsLoading(true);
     setLoadingCommitHash(hash);
     try {
       const details = await git.commitDetails(hash);
+      if (commitDetailsRequestIdRef.current !== requestId) return;
       setSelectedCommitDetails(details);
       setSelectedCommitFile(details.files[0]?.path || null);
       setShowCommitDetailsModal(true);
     } catch (err) {
+      if (commitDetailsRequestIdRef.current !== requestId) return;
       Alert.alert('Error', (err as ApiError).message || 'Failed to load commit');
     } finally {
+      if (commitDetailsRequestIdRef.current !== requestId) return;
       setCommitDetailsLoading(false);
       setLoadingCommitHash(null);
     }
   };
 
   const handleOpenFileDiff = useCallback(async (path: string, staged: boolean, status: string) => {
+    const requestId = changeDiffRequestIdRef.current + 1;
+    changeDiffRequestIdRef.current = requestId;
     setChangeDiffLoading(true);
     setSelectedChangeFile({ path, staged, status });
     setSelectedChangeDiff('');
@@ -621,18 +646,22 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
     setShowFileDiffModal(true);
     try {
       const diff = await git.diff(path, staged);
+      if (changeDiffRequestIdRef.current !== requestId) return;
       setSelectedChangeDiff(diff);
       if (!staged && status === 'U' && !diff.trim()) {
         const file = await fs.read(path);
+        if (changeDiffRequestIdRef.current !== requestId) return;
         if (file.encoding === 'utf8') {
           setSelectedChangeContent(file.content);
         }
       }
     } catch (err) {
+      if (changeDiffRequestIdRef.current !== requestId) return;
       Alert.alert('Error', (err as ApiError).message || 'Failed to load diff');
       setShowFileDiffModal(false);
       setSelectedChangeFile(null);
     } finally {
+      if (changeDiffRequestIdRef.current !== requestId) return;
       setChangeDiffLoading(false);
     }
   }, [fs, git]);

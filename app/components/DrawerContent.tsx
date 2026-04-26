@@ -1,4 +1,5 @@
 import { radius, typography } from "@/constants/themes";
+import { SKIP_AUTO_RESUME_ONCE_KEY } from "@/constants/sessionRouting";
 import { useConnection } from "@/contexts/ConnectionContext";
 import { useSessionRegistry } from "@/contexts/SessionRegistry";
 import type { SessionItem } from "@/contexts/SessionRegistry";
@@ -11,6 +12,7 @@ import InputModal from "@/components/InputModal";
 import { DrawerContentComponentProps, useDrawerStatus } from "@react-navigation/drawer";
 import * as Haptics from "expo-haptics";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import {
   ChevronDown,
@@ -351,8 +353,9 @@ export default function DrawerContent(props: DrawerContentComponentProps) {
           style: 'destructive',
           onPress: () => {
             closeDrawerThen(() => {
+              void AsyncStorage.setItem(SKIP_AUTO_RESUME_ONCE_KEY, "true");
               router.replace("/auth");
-              if (isConnected) disconnect();
+              disconnect();
             });
           },
         },

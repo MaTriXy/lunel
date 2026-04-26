@@ -451,6 +451,7 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
 
   const [currentPath, setCurrentPath] = useState('.');
   const [items, setItems] = useState<FileEntry[]>([]);
+  const [itemsPath, setItemsPath] = useState('.');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -499,10 +500,12 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
   const codebaseRequestIdRef = useRef(0);
   const repoFileSearchRequestIdRef = useRef(0);
   const directoryCountRequestIdRef = useRef(0);
+  const directoryLoadRequestIdRef = useRef(0);
   const lastLocalSearchPathRef = useRef(currentPath);
   const explorerCacheLoadedRef = useRef(false);
   const explorerCacheSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const itemsRef = useRef<FileEntry[]>([]);
+  const itemsPathRef = useRef('.');
   const MAX_UPLOAD_SIZE_BYTES = 15 * 1024 * 1024;
 
   useEffect(() => {
@@ -510,11 +513,16 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
   }, [items]);
 
   useEffect(() => {
+    itemsPathRef.current = itemsPath;
+  }, [itemsPath]);
+
+  useEffect(() => {
     let cancelled = false;
     const cacheKey = cacheNamespace ? `${EXPLORER_CACHE_STORAGE_KEY}:${cacheNamespace}` : null;
     explorerCacheLoadedRef.current = false;
     setCurrentPath('.');
     setItems([]);
+    setItemsPath('.');
     setDirectoryItemCounts({});
 
     const loadExplorerCache = async () => {
@@ -538,6 +546,7 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
 
         setCurrentPath(cachedPath);
         setItems(cachedItems);
+        setItemsPath(cachedPath);
         setDirectoryItemCounts(cachedCounts);
       } catch {
         // Cached explorer state should never block opening the panel.
@@ -559,7 +568,7 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
 
   useEffect(() => {
     const cacheKey = cacheNamespace ? `${EXPLORER_CACHE_STORAGE_KEY}:${cacheNamespace}` : null;
-    if (!cacheKey || !explorerCacheLoadedRef.current) return;
+    if (!cacheKey || !explorerCacheLoadedRef.current || itemsPath !== currentPath || loading) return;
     if (explorerCacheSaveTimerRef.current) {
       clearTimeout(explorerCacheSaveTimerRef.current);
     }
@@ -574,7 +583,7 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
       };
       AsyncStorage.setItem(cacheKey, JSON.stringify(cache)).catch(() => {});
     }, 400);
-  }, [cacheNamespace, currentPath, directoryItemCounts, items]);
+  }, [cacheNamespace, currentPath, directoryItemCounts, items, itemsPath, loading]);
 
   const openWithSystem = async (item: FileEntry, pathOverride?: string) => {
     const filePath = pathOverride ?? (currentPath === '.' ? item.name : `${currentPath}/${item.name}`);
@@ -628,19 +637,30 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
   const loadDirectory = useCallback(async (path: string) => {
     if (!isConnected) return;
 
-    const hasVisibleCache = itemsRef.current.length > 0;
+    const requestId = directoryLoadRequestIdRef.current + 1;
+    directoryLoadRequestIdRef.current = requestId;
+    const hasVisibleCache = itemsPathRef.current === path && itemsRef.current.length > 0;
+    if (!hasVisibleCache) {
+      setItems([]);
+      setItemsPath(path);
+    }
     setLoading(!hasVisibleCache);
     setError(null);
     try {
       const entries = await fs.list(path);
+      if (directoryLoadRequestIdRef.current !== requestId) return;
       setItems(entries);
+      setItemsPath(path);
     } catch (err) {
+      if (directoryLoadRequestIdRef.current !== requestId) return;
       const apiError = err as ApiError;
       if (!hasVisibleCache) {
         setError(apiError.message || 'Failed to load directory');
         setItems([]);
+        setItemsPath(path);
       }
     } finally {
+      if (directoryLoadRequestIdRef.current !== requestId) return;
       setLoading(false);
       innerApi.refreshBottomBar();
     }

@@ -118,3 +118,20 @@ export interface AIQuestion {
     callID?: string;
   };
 }
+
+export interface AISessionStatus {
+  sessionID: string;
+  status: Record<string, unknown> | string;
+  backend?: AiBackend;
+}
+
+export interface AISyncState {
+  sessions: AISession[];
+  statuses: AISessionStatus[];
+  messages: Record<string, AIMessage[]>;
+  pendingPermissions: (AIPermission & { backend?: AiBackend })[];
+  pendingQuestions: (AIQuestion & { backend?: AiBackend })[];
+  statusAuthoritativeByBackend?: Partial<Record<AiBackend, boolean>>;
+  syncedBackends?: AiBackend[];
+  generatedAt: number;
+}

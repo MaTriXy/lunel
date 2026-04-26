@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useConnection, Message } from '../contexts/ConnectionContext';
-import type { AiBackend, AIEvent, AISession, AIMessage, AIAgent, AIProvider, ModelRef, PermissionResponse, AIFileAttachment, CodexPromptOptions } from '../plugins/core/ai/types';
+import type { AiBackend, AIEvent, AISession, AIMessage, AIAgent, AIProvider, ModelRef, PermissionResponse, AIFileAttachment, CodexPromptOptions, AISyncState } from '../plugins/core/ai/types';
 
 export interface AIEvents {
   onEvent?: (event: AIEvent) => void;
@@ -47,6 +47,12 @@ export function useAI(events?: AIEvents) {
     const response = await sendData('ai', 'listSessions');
     if (!response.ok) throw new Error(response.error?.message || 'Failed to list sessions');
     return response.payload.sessions as AISession[];
+  }, [sendData]);
+
+  const syncState = useCallback(async (sessionIds?: Partial<Record<AiBackend, string[]>>): Promise<AISyncState> => {
+    const response = await sendData('ai', 'syncState', { sessionIds: sessionIds ?? {} });
+    if (!response.ok) throw new Error(response.error?.message || 'Failed to sync AI state');
+    return response.payload as unknown as AISyncState;
   }, [sendData]);
 
   const getSession = useCallback(async (id: string, backend: AiBackend = 'opencode'): Promise<AISession> => {
@@ -158,6 +164,7 @@ export function useAI(events?: AIEvents) {
     getBackends,
     createSession,
     listSessions,
+    syncState,
     getSession,
     deleteSession,
     renameSession,

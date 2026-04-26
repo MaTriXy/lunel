@@ -1,13 +1,14 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { SKIP_AUTO_RESUME_ONCE_KEY } from "@/constants/sessionRouting";
 import { useConnection } from "@/contexts/ConnectionContext";
 import { Redirect } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 
 export default function Index() {
-  const [target, setTarget] = useState<"/onboarding" | "/auth" | "/workspace" | null>(null);
-  const { getStoredSession, resumeSession, clearStoredSession, status } = useConnection();
+  const { getStoredSession, resumeSession } = useConnection();
   const attemptedResumeRef = useRef(false);
+  const [target, setTarget] = useState<"/onboarding" | "/auth" | "/workspace" | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -21,21 +22,28 @@ export default function Index() {
         return;
       }
 
-      const storedSession = await getStoredSession();
+      const skipAutoResume = await AsyncStorage.getItem(SKIP_AUTO_RESUME_ONCE_KEY);
       if (cancelled) return;
 
-      if (!storedSession) {
-        setTarget("/auth");
+      if (skipAutoResume === "true") {
+        await AsyncStorage.removeItem(SKIP_AUTO_RESUME_ONCE_KEY);
+        if (!cancelled) setTarget("/auth");
         return;
       }
 
-      setTarget("/workspace");
-      if (attemptedResumeRef.current || status === "connected") return;
+      const storedSession = await getStoredSession();
+      if (cancelled) return;
 
-      attemptedResumeRef.current = true;
-      resumeSession(storedSession).catch(() => {
-        void clearStoredSession();
-      });
+      if (storedSession?.sessionPassword && !attemptedResumeRef.current) {
+        attemptedResumeRef.current = true;
+        setTarget("/workspace");
+        void resumeSession(storedSession).catch(() => {
+          // Workspace owns connection-error UI; avoid an unhandled rejection here.
+        });
+        return;
+      }
+
+      setTarget("/auth");
     };
 
     void chooseInitialRoute();
@@ -43,7 +51,7 @@ export default function Index() {
     return () => {
       cancelled = true;
     };
-  }, [clearStoredSession, getStoredSession, resumeSession, status]);
+  }, [getStoredSession, resumeSession]);
 
   if (!target) return <View style={{ flex: 1 }} />;
   return <Redirect href={target} />;

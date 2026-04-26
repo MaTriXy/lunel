@@ -40,21 +40,27 @@ function PortsPanel({ instanceId, isActive }: PluginPanelProps) {
   const portsCacheLoadedRef = useRef(false);
   const portsCacheSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const portsListRef = useRef<PortInfo[]>([]);
+  const portsListRequestIdRef = useRef(0);
 
   const loadPorts = useCallback(async () => {
     if (!isConnected) {
       if (portsListRef.current.length === 0) setLoading(false);
       return;
     }
+    const requestId = portsListRequestIdRef.current + 1;
+    portsListRequestIdRef.current = requestId;
     try {
       setError(null);
       setLoading(portsListRef.current.length === 0);
       const result = await portsApi.list();
+      if (portsListRequestIdRef.current !== requestId) return;
       setPortsList(result);
     } catch (err) {
+      if (portsListRequestIdRef.current !== requestId) return;
       const message = err instanceof ApiError ? err.message : 'Failed to load ports';
       if (portsListRef.current.length === 0) setError(message);
     } finally {
+      if (portsListRequestIdRef.current !== requestId) return;
       setLoading(false);
     }
   }, [isConnected, portsApi]);

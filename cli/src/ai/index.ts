@@ -2,7 +2,7 @@
 // by the `backend` field in each request. Backends that fail to init are
 // skipped gracefully; the available list is exposed to the app.
 
-import type { AIProvider, AiEvent, AiEventEmitter, ModelSelector, FileAttachment, CodexPromptOptions } from "./interface.js";
+import type { AIProvider, AiEvent, AiEventEmitter, ModelSelector, FileAttachment, CodexPromptOptions, AiSyncState } from "./interface.js";
 
 export type AiBackend = "opencode" | "codex";
 const DEBUG_MODE = process.env.LUNEL_DEBUG === "1" || process.env.LUNEL_DEBUG_AI === "1";
@@ -83,6 +83,65 @@ export class AiManager {
     );
     const sessions = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
     return { sessions };
+  }
+
+  async syncState(sessionIds: Partial<Record<AiBackend, string[]>> = {}): Promise<{
+    sessions: Array<Record<string, unknown> & { backend: AiBackend }>;
+    statuses: Array<Record<string, unknown> & { backend: AiBackend }>;
+    messages: Record<string, unknown>;
+    pendingPermissions: Array<Record<string, unknown> & { backend: AiBackend }>;
+    pendingQuestions: Array<Record<string, unknown> & { backend: AiBackend }>;
+    statusAuthoritativeByBackend: Partial<Record<AiBackend, boolean>>;
+    syncedBackends: AiBackend[];
+    generatedAt: number;
+  }> {
+    const results = await Promise.allSettled(
+      this._available.map(async (backend) => {
+        const provider = this._providers[backend]!;
+        const state: AiSyncState = provider.syncState
+          ? await provider.syncState(sessionIds[backend])
+          : {
+              sessions: (await provider.listSessions()).sessions as unknown[],
+              statuses: [],
+              messages: {},
+              generatedAt: Date.now(),
+            };
+        return { backend, state };
+      })
+    );
+
+    const sessions: Array<Record<string, unknown> & { backend: AiBackend }> = [];
+    const statuses: Array<Record<string, unknown> & { backend: AiBackend }> = [];
+    const messages: Record<string, unknown> = {};
+    const pendingPermissions: Array<Record<string, unknown> & { backend: AiBackend }> = [];
+    const pendingQuestions: Array<Record<string, unknown> & { backend: AiBackend }> = [];
+    const statusAuthoritativeByBackend: Partial<Record<AiBackend, boolean>> = {};
+    const syncedBackends: AiBackend[] = [];
+
+    for (const result of results) {
+      if (result.status !== "fulfilled") continue;
+      const { backend, state } = result.value;
+      syncedBackends.push(backend);
+      statusAuthoritativeByBackend[backend] = state.statusAuthoritative !== false;
+      sessions.push(...((state.sessions as Array<Record<string, unknown>> | undefined) ?? []).map((session) => ({ ...session, backend })));
+      statuses.push(...(state.statuses ?? []).map((status) => ({ ...status, backend })));
+      for (const [sessionId, value] of Object.entries(state.messages ?? {})) {
+        messages[`${backend}:${sessionId}`] = value;
+      }
+      pendingPermissions.push(...((state.pendingPermissions ?? []) as Array<Record<string, unknown>>).map((permission) => ({ ...permission, backend })));
+      pendingQuestions.push(...((state.pendingQuestions ?? []) as Array<Record<string, unknown>>).map((question) => ({ ...question, backend })));
+    }
+
+    return {
+      sessions,
+      statuses,
+      messages,
+      pendingPermissions,
+      pendingQuestions,
+      statusAuthoritativeByBackend,
+      syncedBackends,
+      generatedAt: Date.now(),
+    };
   }
 
   // Session management — all require explicit backend

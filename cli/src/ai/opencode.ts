@@ -7,6 +7,8 @@ import type {
   AIProvider,
   AiEventEmitter,
   CodexPromptOptions,
+  AiSessionStatus,
+  AiSyncState,
   FileAttachment,
   ModelSelector,
   MessageInfo,
@@ -454,6 +456,55 @@ export class OpenCodeProvider implements AIProvider {
     }
   }
 
+  async syncState(sessionIds: string[] = []): Promise<AiSyncState> {
+    const [sessionsResult, statusesResult, permissionsResult, questionsResult] = await Promise.allSettled([
+      this.listSessions(),
+      this.fetchSessionStatuses(),
+      this.listPendingPermissions(),
+      this.listPendingQuestions(),
+    ]);
+
+    const sessions = sessionsResult.status === "fulfilled"
+      ? ((sessionsResult.value.sessions as unknown[]) ?? [])
+      : [];
+    const statuses = statusesResult.status === "fulfilled" ? statusesResult.value : [];
+    const pendingPermissions = permissionsResult.status === "fulfilled" ? permissionsResult.value : [];
+    const pendingQuestions = questionsResult.status === "fulfilled" ? questionsResult.value : [];
+
+    const messageSessionIds = new Set(sessionIds);
+    for (const entry of statuses) {
+      const statusObj = typeof entry.status === "object" && entry.status !== null ? entry.status as Record<string, unknown> : {};
+      const statusType = typeof statusObj.type === "string" ? statusObj.type.toLowerCase() : String(entry.status ?? "").toLowerCase();
+      if (statusType === "busy" || statusType === "running" || statusType === "working" || statusType === "retry") {
+        messageSessionIds.add(entry.sessionID);
+      }
+    }
+    for (const permission of pendingPermissions) {
+      const sessionID = this.readString(permission.sessionID) ?? this.readString(permission.sessionId);
+      if (sessionID) messageSessionIds.add(sessionID);
+    }
+    for (const question of pendingQuestions) {
+      const sessionID = this.readString(question.sessionID) ?? this.readString(question.sessionId);
+      if (sessionID) messageSessionIds.add(sessionID);
+    }
+
+    const messages: Record<string, MessageInfo[]> = {};
+    await Promise.allSettled(Array.from(messageSessionIds).map(async (sessionId) => {
+      const response = await this.getMessages(sessionId);
+      messages[sessionId] = response.messages;
+    }));
+
+    return {
+      sessions,
+      statuses,
+      messages,
+      pendingPermissions,
+      pendingQuestions,
+      statusAuthoritative: statusesResult.status === "fulfilled",
+      generatedAt: Date.now(),
+    };
+  }
+
   // -------------------------------------------------------------------------
   // Interaction
   // -------------------------------------------------------------------------
@@ -812,6 +863,49 @@ export class OpenCodeProvider implements AIProvider {
         this.debugWarn(`[sse] Failed to refresh messages for busy session ${sessionId}:`, (err as Error).message);
       }
     }
+  }
+
+  private async fetchSessionStatuses(): Promise<AiSessionStatus[]> {
+    const payload = await this.fetchOpenCodeJson("/session/status", { method: "GET" });
+    if (!payload || typeof payload !== "object") return [];
+
+    return Object.entries(payload as Record<string, unknown>).map(([sessionID, status]) => ({
+      sessionID,
+      status: status as Record<string, unknown> | string,
+    }));
+  }
+
+  private async listPendingPermissions(): Promise<Record<string, unknown>[]> {
+    const permissionApi = (this.client as unknown as {
+      permission?: {
+        list: () => Promise<{ data?: unknown[]; error?: unknown }>;
+      };
+    })?.permission;
+    if (!permissionApi?.list) return [];
+
+    const response = await permissionApi.list();
+    const data = Array.isArray(response.data) ? response.data : [];
+    return data
+      .map((entry) => normalizePermissionProperties(this.asRecord(entry)))
+      .filter((entry) => !!this.readString(entry.id));
+  }
+
+  private async listPendingQuestions(): Promise<Record<string, unknown>[]> {
+    const data = await this.fetchOpenCodeJson("/question", { method: "GET" });
+    const questions = Array.isArray(data) ? data : [];
+    return questions
+      .flatMap((entry) => {
+        const question = this.asRecord(entry);
+        const id = this.readString(question.id);
+        const sessionID = this.readString(question.sessionID) ?? this.readString(question.sessionId);
+        if (!id || !sessionID) return [];
+        return [{
+          id,
+          sessionID,
+          questions: Array.isArray(question.questions) ? question.questions : [],
+          tool: typeof question.tool === "object" && question.tool !== null ? question.tool as Record<string, unknown> : undefined,
+        }];
+      });
   }
 
   private async refreshSessionsMetadata(): Promise<void> {

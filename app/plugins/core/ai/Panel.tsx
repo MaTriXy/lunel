@@ -12,7 +12,7 @@ import { useEditorConfig } from "@/contexts/EditorContext";
 import { useAI } from "@/hooks/useAI";
 import { useApi } from "@/hooks/useApi";
 import { logger } from "@/lib/logger";
-import type { AIEvent, AISession, AIMessage, AIPart, AIAgent, AIProvider, AIPermission, AIQuestion, AIFileAttachment, ModelRef, PermissionResponse, AiBackend, CodexPromptOptions } from "./types";
+import type { AIEvent, AISession, AIMessage, AIPart, AIAgent, AIProvider, AIPermission, AIQuestion, AIFileAttachment, ModelRef, PermissionResponse, AiBackend, CodexPromptOptions, AISyncState } from "./types";
 import Markdown from "./Markdown";
 import ToolCall from "./ToolCall";
 import FileChange from "./FileChange";
@@ -197,6 +197,48 @@ function isBackendUnavailableError(message: string): boolean {
     || /no ai backends available/i.test(message)
     || /ai manager not initialized/i.test(message)
   );
+}
+
+function isTransientConnectionError(message: string): boolean {
+  return /transport not connected|reconnecting|offline|request timeout|socket closed|network/i.test(message);
+}
+
+function readSessionStatusType(status: Record<string, unknown> | string | undefined): string {
+  if (typeof status === "string") return status.toLowerCase();
+  if (!status || typeof status !== "object") return "";
+  const type = status.type;
+  if (typeof type === "string") return type.toLowerCase();
+  const state = status.state;
+  if (typeof state === "string") return state.toLowerCase();
+  return "";
+}
+
+function isRunningSessionStatus(status: Record<string, unknown> | string | undefined): boolean {
+  const normalized = readSessionStatusType(status);
+  return (
+    normalized === "busy"
+    || normalized === "running"
+    || normalized === "working"
+    || normalized === "retry"
+    || normalized === "processing"
+    || normalized === "pending"
+  );
+}
+
+function activityLabelForStatus(status: Record<string, unknown> | string | undefined): string {
+  const normalized = readSessionStatusType(status);
+  if (normalized === "retry") return "Reconnecting...";
+  if (normalized === "working" || normalized === "processing") return "Working...";
+  return "Thinking...";
+}
+
+function splitBackendMessageKey(key: string): { backend: AiBackend; sessionId: string } | null {
+  const separatorIndex = key.indexOf(":");
+  if (separatorIndex <= 0) return null;
+  const backend = key.slice(0, separatorIndex);
+  if (backend !== "opencode" && backend !== "codex") return null;
+  const sessionId = key.slice(separatorIndex + 1);
+  return sessionId ? { backend, sessionId } : null;
 }
 
 function showBackendMissingInstallAlert(backend: AiBackend): void {
@@ -2603,6 +2645,10 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
   const aiCacheSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const streamingBySessionRef = useRef<Record<string, true>>({});
   const codexFinalSyncInFlightRef = useRef<Set<string>>(new Set());
+  const aiSyncRequestIdRef = useRef(0);
+  const tabsRef = useRef<AITab[]>([]);
+  const activeSessionIdRef = useRef<string | null>(null);
+  const activeBackendRef = useRef<AiBackend>("opencode");
   const isNearBottomRef = useRef(true);
   const autoFollowRef = useRef(true);
   const userDraggingMessagesRef = useRef(false);
@@ -2667,6 +2713,15 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
   useEffect(() => {
     messagesMapRef.current = messagesMap;
   }, [messagesMap]);
+
+  useEffect(() => {
+    tabsRef.current = tabs;
+  }, [tabs]);
+
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId;
+    activeBackendRef.current = activeBackend;
+  }, [activeBackend, activeSessionId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2927,9 +2982,7 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
           // OpenCode: properties = { sessionID, status: { type: "idle" | "busy" | "retry" } }
           const sessId = (props.sessionID as string) || (props.sessionId as string);
           const statusObj = props.status as Record<string, unknown> | string | undefined;
-          const statusType = typeof statusObj === "object" ? (statusObj?.type as string) : (statusObj as string);
-          const normalized = (statusType || "").toLowerCase();
-          const streaming = normalized === "busy" || normalized === "running" || normalized === "working";
+          const streaming = isRunningSessionStatus(statusObj);
           if (sessId) {
             setStreamingBySession((prev) => {
               if (streaming) {
@@ -3085,6 +3138,161 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
     }, []),
   });
 
+  const applyAiSyncState = useCallback((syncState: AISyncState) => {
+    const currentTabs = tabsRef.current;
+    const currentActiveSessionId = activeSessionIdRef.current;
+    const syncedSessions = Array.isArray(syncState.sessions) ? syncState.sessions : [];
+    const syncedBackends = new Set<AiBackend>(
+      (syncState.syncedBackends && syncState.syncedBackends.length > 0)
+        ? syncState.syncedBackends
+        : (["opencode", "codex"] as AiBackend[])
+    );
+    const statusAuthoritativeByBackend = syncState.statusAuthoritativeByBackend ?? {};
+    const authoritativeBackends = new Set<AiBackend>(
+      (["opencode", "codex"] as AiBackend[]).filter((backend) => statusAuthoritativeByBackend[backend] !== false)
+    );
+
+    setSessionTabs((prev) => {
+      const keptTabs = prev.filter((tab) => !syncedBackends.has(tab.backend));
+      const syncedTabs = reconcileSessionTabs(
+        prev.filter((tab) => syncedBackends.has(tab.backend)),
+        syncedSessions.filter((session) => syncedBackends.has(session.backend ?? "opencode")),
+      );
+      return sortTabsByUpdatedAt([...keptTabs, ...syncedTabs]);
+    });
+
+    setMessagesMap((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const [key, incomingMessages] of Object.entries(syncState.messages ?? {})) {
+        const parsed = splitBackendMessageKey(key);
+        if (!parsed || !Array.isArray(incomingMessages)) continue;
+        const merged = parsed.backend === "codex"
+          ? incomingMessages.map((message) => {
+              const existingMsg = (prev[parsed.sessionId] || []).find((existing) => existing.id === message.id);
+              if (!existingMsg) return message;
+              return {
+                ...message,
+                parts: mergeMessagePartsPreservingRichState(existingMsg.parts || [], message.parts || []),
+              };
+            })
+          : incomingMessages;
+        next[parsed.sessionId] = merged;
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+
+    const runningBySession: Record<string, true> = {};
+    const nextLabels: Record<string, string> = {};
+    for (const statusEntry of syncState.statuses ?? []) {
+      const backend = statusEntry.backend ?? "opencode";
+      if (!authoritativeBackends.has(backend)) continue;
+      const sessionId = (statusEntry.sessionID as string) || (statusEntry as any).sessionId;
+      if (!sessionId) continue;
+      if (isRunningSessionStatus(statusEntry.status)) {
+        runningBySession[sessionId] = true;
+        nextLabels[sessionId] = activityLabelForStatus(statusEntry.status);
+      }
+    }
+
+    for (const permission of syncState.pendingPermissions ?? []) {
+      const sessionId = permission.sessionID || (permission as any).sessionId;
+      if (!sessionId) continue;
+      runningBySession[sessionId] = true;
+      nextLabels[sessionId] = "Waiting for approval...";
+    }
+    for (const question of syncState.pendingQuestions ?? []) {
+      const sessionId = question.sessionID || (question as any).sessionId;
+      if (!sessionId) continue;
+      runningBySession[sessionId] = true;
+      nextLabels[sessionId] = "Waiting for input...";
+    }
+
+    setStreamingBySession((prev) => {
+      const next = { ...prev };
+      for (const tab of currentTabs) {
+        if (!tab.sessionId || !authoritativeBackends.has(tab.backend)) continue;
+        if (runningBySession[tab.sessionId]) {
+          next[tab.sessionId] = true;
+        } else {
+          delete next[tab.sessionId];
+        }
+      }
+      for (const [sessionId, value] of Object.entries(runningBySession)) {
+        next[sessionId] = value;
+      }
+      return next;
+    });
+
+    setSessionActivityLabels((prev) => {
+      const next = { ...prev };
+      for (const tab of currentTabs) {
+        if (!tab.sessionId || !authoritativeBackends.has(tab.backend)) continue;
+        if (!runningBySession[tab.sessionId]) {
+          delete next[tab.sessionId];
+        }
+      }
+      for (const [sessionId, label] of Object.entries(nextLabels)) {
+        next[sessionId] = label;
+      }
+      return next;
+    });
+
+    const nextPermission = (syncState.pendingPermissions ?? []).find((permission) => (
+      currentActiveSessionId
+        ? (permission.sessionID || (permission as any).sessionId) === currentActiveSessionId
+        : true
+    )) ?? null;
+    const nextQuestion = (syncState.pendingQuestions ?? []).find((question) => (
+      currentActiveSessionId
+        ? (question.sessionID || (question as any).sessionId) === currentActiveSessionId
+        : true
+    )) ?? null;
+    setPendingPermission(nextPermission as AIPermission | null);
+    setPendingQuestion(nextQuestion as AIQuestion | null);
+  }, []);
+
+  const syncAiState = useCallback(async (reason: string, forceActiveMessageRefresh = false) => {
+    if (status !== "connected") return;
+    const requestId = ++aiSyncRequestIdRef.current;
+    const sessionIds: Partial<Record<AiBackend, string[]>> = {};
+    const currentTabs = tabsRef.current;
+    const currentActiveSessionId = activeSessionIdRef.current;
+    const currentActiveBackend = activeBackendRef.current;
+    for (const tab of currentTabs) {
+      if (!tab.sessionId) continue;
+      if (!sessionIds[tab.backend]) sessionIds[tab.backend] = [];
+      sessionIds[tab.backend]!.push(tab.sessionId);
+    }
+    if (currentActiveSessionId && currentActiveBackend) {
+      if (!sessionIds[currentActiveBackend]) sessionIds[currentActiveBackend] = [];
+      if (!sessionIds[currentActiveBackend]!.includes(currentActiveSessionId)) {
+        sessionIds[currentActiveBackend]!.push(currentActiveSessionId);
+      }
+    }
+
+    try {
+      logger.info("ai-panel", "sync state requested", {
+        reason,
+        activeSessionId: currentActiveSessionId,
+        activeBackend: currentActiveBackend,
+      });
+      const snapshot = await ai.syncState(sessionIds);
+      if (requestId !== aiSyncRequestIdRef.current) return;
+      applyAiSyncState(snapshot);
+
+      if (forceActiveMessageRefresh && currentActiveSessionId && currentActiveBackend && !snapshot.messages?.[`${currentActiveBackend}:${currentActiveSessionId}`]) {
+        await refreshSessionMessagesRef.current(currentActiveSessionId, currentActiveBackend, false);
+      }
+    } catch (error) {
+      logger.warn("ai-panel", "sync state failed", {
+        reason,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }, [ai, applyAiSyncState, status]);
+
   // Initialize on connection
   useEffect(() => {
     if (status !== "connected" || isInitialized) return;
@@ -3219,6 +3427,21 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
       setLoadingSessionId(null);
     }
   }, [status, sessionState]);
+
+  useEffect(() => {
+    if (status !== "connected" || !isInitialized || !isActive) return;
+    void syncAiState("connected-active", true);
+  }, [status, isInitialized, isActive, activeSessionId, syncAiState]);
+
+  useEffect(() => {
+    if (status !== "connected" || !isInitialized || !isActive || !activeSessionId || !isActiveSessionStreaming) return;
+
+    const interval = setInterval(() => {
+      void syncAiState("streaming-watchdog", true);
+    }, 6000);
+
+    return () => clearInterval(interval);
+  }, [status, isInitialized, isActive, activeSessionId, isActiveSessionStreaming, syncAiState]);
 
   const refreshSessionMessages = useCallback(async (sessionId: string, backend: AiBackend, force = false) => {
     try {
@@ -3961,6 +4184,8 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
             await ai.runCommand(ensured, "init", messageBackend);
             break;
           default:
+            setSessionActivityLabels((prev) => ({ ...prev, [ensured]: "Thinking..." }));
+            setStreamingBySession((prev) => ({ ...prev, [ensured]: true }));
             await ai.sendPrompt(
               ensured,
               text,
@@ -3970,16 +4195,26 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
               undefined,
               getCodexPromptOptions(),
             );
-            setSessionActivityLabels((prev) => ({ ...prev, [ensured]: "Thinking..." }));
-            setStreamingBySession((prev) => ({ ...prev, [ensured]: true }));
         }
       } catch (err) {
-        Alert.alert("Error", (err as Error).message);
+        const message = err instanceof Error ? err.message : String(err);
+        if (isTransientConnectionError(message)) {
+          setSessionActivityLabels((prev) => ({ ...prev, [ensured]: "Reconnecting..." }));
+          return;
+        }
+        setStreamingBySession((prev) => {
+          if (!prev[ensured]) return prev;
+          const next = { ...prev };
+          delete next[ensured];
+          return next;
+        });
+        Alert.alert("Error", message);
       }
       return;
     }
 
     // Regular prompt
+    let committedSessionId: string | null = null;
     try {
       const optimisticMessageId = `opt-${Date.now()}`;
       const optimisticCreatedAt = Date.now();
@@ -4031,6 +4266,9 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
         return;
       }
       markSessionAsUserActive(ensured, messageBackend);
+      committedSessionId = ensured;
+      setSessionActivityLabels((prev) => ({ ...prev, [ensured]: "Thinking..." }));
+      setStreamingBySession((prev) => ({ ...prev, [ensured]: true }));
 
       await ai.sendPrompt(
         ensured,
@@ -4061,10 +4299,14 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
         };
         return { ...prev, [committedBucketId]: updated };
       });
-      setSessionActivityLabels((prev) => ({ ...prev, [ensured]: "Thinking..." }));
-      setStreamingBySession((prev) => ({ ...prev, [ensured]: true }));
       setPendingImage(null);
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (committedSessionId && isTransientConnectionError(message)) {
+        const sessionId = committedSessionId;
+        setSessionActivityLabels((prev) => ({ ...prev, [sessionId]: "Reconnecting..." }));
+        return;
+      }
       const fallbackBucketId = sessId ?? localDraftTabId;
       if (fallbackBucketId) {
         setMessagesMap((prev) => ({
@@ -4072,7 +4314,16 @@ const selectedModelNameFull = modelOptions.find((m) => m.id === selectedModel)?.
           [fallbackBucketId]: (prev[fallbackBucketId] || []).filter((msg) => !msg.id.startsWith("opt-")),
         }));
       }
-      Alert.alert("Error", (err as Error).message);
+      if (committedSessionId) {
+        const sessionId = committedSessionId;
+        setStreamingBySession((prev) => {
+          if (!prev[sessionId]) return prev;
+          const next = { ...prev };
+          delete next[sessionId];
+          return next;
+        });
+      }
+      Alert.alert("Error", message);
     }
   };
 
