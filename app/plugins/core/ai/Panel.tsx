@@ -3417,68 +3417,12 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
       }
     } catch (err) {
       const syncError = err as Error & { code?: string };
-      logAiSessionDiagnostics("sync failed; falling back to listSessions", {
+      logAiSessionDiagnostics("sync failed", {
         reason,
         requestId,
         message: syncError.message,
         code: syncError.code,
       });
-
-      try {
-        const [sessionsResult, backendsResult] = await Promise.allSettled([
-          ai.listSessions(),
-          ai.getBackends(),
-        ]);
-        if (requestId !== aiSyncRequestIdRef.current) {
-          logAiSessionDiagnostics("fallback response ignored: stale request", {
-            reason,
-            requestId,
-            latestRequestId: aiSyncRequestIdRef.current,
-          });
-          return;
-        }
-        if (sessionsResult.status !== "fulfilled") {
-          throw sessionsResult.reason;
-        }
-
-        const fallbackSessions = Array.isArray(sessionsResult.value) ? sessionsResult.value : [];
-        const fallbackBackends = backendsResult.status === "fulfilled" && Array.isArray(backendsResult.value)
-          ? backendsResult.value
-          : Array.from(new Set(fallbackSessions.map((session) => session.backend ?? "opencode")));
-        const fallbackStatusAuthoritative: Partial<Record<AiBackend, boolean>> = {};
-        for (const backend of fallbackBackends) {
-          fallbackStatusAuthoritative[backend] = false;
-        }
-        const fallbackCounts = countBackendItems(fallbackSessions);
-        logAiSessionDiagnostics("fallback listSessions response received", {
-          reason,
-          requestId,
-          sessions: fallbackSessions.length,
-          opencode: fallbackCounts.opencode,
-          codex: fallbackCounts.codex,
-          codexSessionIds: codexSessionIds(fallbackSessions),
-          syncedBackends: fallbackBackends,
-          backendDiscovery: backendsResult.status,
-        });
-        applyAiSyncState({
-          sessions: fallbackSessions,
-          statuses: [],
-          messages: {},
-          pendingPermissions: [],
-          pendingQuestions: [],
-          statusAuthoritativeByBackend: fallbackStatusAuthoritative,
-          syncedBackends: fallbackBackends,
-          generatedAt: Date.now(),
-        });
-      } catch (fallbackErr) {
-        const fallbackError = fallbackErr as Error & { code?: string };
-        logAiSessionDiagnostics("fallback listSessions failed", {
-          reason,
-          requestId,
-          message: fallbackError.message,
-          code: fallbackError.code,
-        });
-      }
     }
   }, [ai, applyAiSyncState, status]);
 
