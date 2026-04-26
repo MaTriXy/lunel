@@ -1,4 +1,5 @@
 import Loading from "@/components/Loading";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Header from "@/components/Header";
 import { Message, useConnection } from "@/contexts/ConnectionContext";
 import { useEditorConfig } from "@/contexts/EditorContext";
@@ -45,6 +46,14 @@ interface EditorTab {
 }
 
 const AUTOSAVE_DELAY_MS = 750;
+const EDITOR_PANEL_CACHE_STORAGE_KEY = "@lunel_editor_panel_cache_v1";
+
+type EditorPanelCache = {
+  tabs: EditorTab[];
+  activeTabId: string | null;
+  contentByTab: Record<string, string>;
+  savedAt: number;
+};
 
 function makeTabId() {
   return `editor-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -299,9 +308,9 @@ function createEditorHtml({
 </html>`;
 }
 
-export default function EditorPanel({ bottomBarHeight: _bottomBarHeight }: PluginPanelProps) {
+export default function EditorPanel({ isActive, bottomBarHeight: _bottomBarHeight }: PluginPanelProps) {
   const { colors, fonts, fontSelection, isDark } = useTheme();
-  const { fireData, onDataEvent } = useConnection();
+  const { fireData, onDataEvent, status } = useConnection();
   const { openTab, setDrawerContentVariant } = usePlugins();
   const { config } = useEditorConfig();
   const { showEditorReviewButton, requestEditorReview } = useReviewPrompt();
@@ -331,6 +340,8 @@ export default function EditorPanel({ bottomBarHeight: _bottomBarHeight }: Plugi
   const saveTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const webViewRef = useRef<WebView | null>(null);
   const webViewContentRef = useRef<Record<string, string>>({});
+  const editorCacheLoadedRef = useRef(false);
+  const editorCacheSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const keyboardHeightSV = useSharedValue(0);
 
   useKeyboardHandler(
@@ -362,6 +373,61 @@ export default function EditorPanel({ bottomBarHeight: _bottomBarHeight }: Plugi
   useEffect(() => {
     tabsRef.current = tabs;
   }, [tabs]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    AsyncStorage.getItem(EDITOR_PANEL_CACHE_STORAGE_KEY)
+      .then((raw) => {
+        if (cancelled || !raw) return;
+        const parsed = JSON.parse(raw) as Partial<EditorPanelCache>;
+        const cachedTabs = Array.isArray(parsed.tabs) ? parsed.tabs : [];
+        const contentByTab = parsed.contentByTab && typeof parsed.contentByTab === "object" ? parsed.contentByTab : {};
+        const safeTabs = cachedTabs.map((tab) => ({
+          ...tab,
+          isSaving: false,
+          isLoading: false,
+          saveError: null,
+          loadError: tab.loadError ?? null,
+        }));
+
+        webViewContentRef.current = contentByTab as Record<string, string>;
+        setTabs(safeTabs);
+        setActiveTabId(
+          parsed.activeTabId && safeTabs.some((tab) => tab.id === parsed.activeTabId)
+            ? parsed.activeTabId
+            : safeTabs[0]?.id ?? null
+        );
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) editorCacheLoadedRef.current = true;
+      });
+
+    return () => {
+      cancelled = true;
+      if (editorCacheSaveTimerRef.current) clearTimeout(editorCacheSaveTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!editorCacheLoadedRef.current) return;
+
+    if (editorCacheSaveTimerRef.current) clearTimeout(editorCacheSaveTimerRef.current);
+    editorCacheSaveTimerRef.current = setTimeout(() => {
+      const cache: EditorPanelCache = {
+        tabs: tabs.map((tab) => ({
+          ...tab,
+          isSaving: false,
+          isLoading: false,
+        })),
+        activeTabId,
+        contentByTab: webViewContentRef.current,
+        savedAt: Date.now(),
+      };
+      AsyncStorage.setItem(EDITOR_PANEL_CACHE_STORAGE_KEY, JSON.stringify(cache)).catch(() => {});
+    }, 500);
+  }, [activeTabId, tabs]);
 
   const clearSaveTimer = useCallback((tabId: string) => {
     const existing = saveTimeoutsRef.current[tabId];
@@ -640,6 +706,34 @@ export default function EditorPanel({ bottomBarHeight: _bottomBarHeight }: Plugi
       `);
     }
   }, [activeTabId, config.wrapLines, fs]);
+
+  useEffect(() => {
+    if (!isActive || status !== "connected") return;
+
+    let cancelled = false;
+
+    for (const tab of tabsRef.current) {
+      if (tab.isDirty || tab.isDeleted || tab.isLoading || tab.loadError) {
+        continue;
+      }
+
+      void reloadTabFromDisk(tab.id, tab.path).catch((error) => {
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : "Failed to refresh file";
+        setTabs((prev) =>
+          prev.map((candidate) =>
+            candidate.id === tab.id
+              ? { ...candidate, loadError: message }
+              : candidate
+          )
+        );
+      });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isActive, reloadTabFromDisk, status]);
 
   const controller = useMemo(() => ({
     openFile,

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect, memo } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef, memo } from 'react';
 import {
   ScrollView,
   Text,
@@ -43,9 +43,19 @@ import { gPI } from '../../gpi';
 import { lunelApi } from '@/lib/storage';
 
 const HISTORY_KEY = 'tool-history';
+const TOOL_PANEL_CACHE_KEY = 'tool-panel-cache';
 
 type ContentType = 'json' | 'xml' | 'timestamp' | 'base64' | 'url-encoded' | 'text';
 type ToolCategory = 'format' | 'encode' | 'hash' | 'string' | 'time';
+
+type ToolPanelCache = {
+  input: string;
+  output: string;
+  activeCategory: ToolCategory | 'recent';
+  selectedToolId: string | null;
+  lastUsedTool: string | null;
+  savedAt: number;
+};
 
 interface Tool {
   id: string;
@@ -73,13 +83,52 @@ function ToolsPanel({ instanceId, isActive, bottomBarHeight }: PluginPanelProps)
   const [recentToolIds, setRecentToolIds] = useState<string[]>([]);
   const [pasteTicked, setPasteTicked] = useState(false);
   const [copyTicked, setCopyTicked] = useState(false);
+  const toolCacheLoadedRef = useRef(false);
+  const toolCacheSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load recent tools on mount
   useEffect(() => {
     lunelApi.storage.jsons.read<string[]>(HISTORY_KEY).then(data => {
       if (data) setRecentToolIds(data);
     });
+
+    let cancelled = false;
+    lunelApi.storage.jsons.read<ToolPanelCache>(TOOL_PANEL_CACHE_KEY)
+      .then((cache) => {
+        if (cancelled || !cache) return;
+        setInput(typeof cache.input === 'string' ? cache.input : '');
+        setOutput(typeof cache.output === 'string' ? cache.output : '');
+        setActiveCategory(cache.activeCategory ?? 'format');
+        setSelectedToolId(cache.selectedToolId ?? null);
+        setLastUsedTool(cache.lastUsedTool ?? null);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) toolCacheLoadedRef.current = true;
+      });
+
+    return () => {
+      cancelled = true;
+      if (toolCacheSaveTimerRef.current) clearTimeout(toolCacheSaveTimerRef.current);
+    };
   }, []);
+
+  useEffect(() => {
+    if (!toolCacheLoadedRef.current) return;
+
+    if (toolCacheSaveTimerRef.current) clearTimeout(toolCacheSaveTimerRef.current);
+    toolCacheSaveTimerRef.current = setTimeout(() => {
+      const cache: ToolPanelCache = {
+        input,
+        output,
+        activeCategory,
+        selectedToolId,
+        lastUsedTool,
+        savedAt: Date.now(),
+      };
+      lunelApi.storage.jsons.write(TOOL_PANEL_CACHE_KEY, cache).catch(() => {});
+    }, 400);
+  }, [activeCategory, input, lastUsedTool, output, selectedToolId]);
 
   // Save recent tool
   const addToRecent = useCallback((toolId: string) => {

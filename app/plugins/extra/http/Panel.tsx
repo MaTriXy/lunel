@@ -21,6 +21,7 @@ import { lunelApi } from '@/lib/storage';
 import { useApi, ApiError } from '@/hooks/useApi';
 
 const HISTORY_KEY = 'http-history';
+const HTTP_PANEL_CACHE_KEY = 'http-panel-cache';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
 type HttpTab = 'client' | 'history' | 'configure';
@@ -59,6 +60,19 @@ interface HistoryItem {
   viaCli?: boolean;
 }
 
+type HttpPanelCache = {
+  method: HttpMethod;
+  url: string;
+  headers: Header[];
+  body: string;
+  response: HttpResponse | null;
+  activeTab: HttpTab;
+  useCliProxy: boolean;
+  requestExpanded: boolean;
+  responseHeadersExpanded: boolean;
+  savedAt: number;
+};
+
 async function loadHistory(): Promise<HistoryItem[]> {
   const data = await lunelApi.storage.jsons.read<HistoryItem[]>(HISTORY_KEY);
   return data || [];
@@ -89,6 +103,8 @@ function HttpPanel({ instanceId, isActive, bottomBarHeight }: PluginPanelProps) 
   const [useCliProxy, setUseCliProxy] = useState(true);
   const [copied, setCopied] = useState(false);
   const urlInputRef = useRef<any>(null);
+  const httpCacheLoadedRef = useRef(false);
+  const httpCacheSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { height: keyboardHeightSV } = useReanimatedKeyboardAnimation();
   const rootAnimatedStyle = useAnimatedStyle(() => ({
     marginBottom: Math.max(0, -keyboardHeightSV.value - bottomBarHeight),
@@ -133,7 +149,57 @@ function HttpPanel({ instanceId, isActive, bottomBarHeight }: PluginPanelProps) 
   // Load history on mount
   useEffect(() => {
     loadHistory().then(setHistory);
+
+    let cancelled = false;
+    lunelApi.storage.jsons.read<HttpPanelCache>(HTTP_PANEL_CACHE_KEY)
+      .then((cache) => {
+        if (cancelled || !cache) return;
+        if (METHODS.includes(cache.method)) setMethod(cache.method);
+        setUrl(typeof cache.url === 'string' ? cache.url : '');
+        setHeaders(Array.isArray(cache.headers) && cache.headers.length > 0
+          ? cache.headers
+          : [{ id: '1', key: 'Content-Type', value: 'application/json', enabled: true }]
+        );
+        setBody(typeof cache.body === 'string' ? cache.body : '');
+        setResponse(cache.response ?? null);
+        if (cache.activeTab === 'client' || cache.activeTab === 'history' || cache.activeTab === 'configure') {
+          setActiveTab(cache.activeTab);
+        }
+        setUseCliProxy(typeof cache.useCliProxy === 'boolean' ? cache.useCliProxy : true);
+        setRequestExpanded(typeof cache.requestExpanded === 'boolean' ? cache.requestExpanded : true);
+        setResponseHeadersExpanded(typeof cache.responseHeadersExpanded === 'boolean' ? cache.responseHeadersExpanded : false);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) httpCacheLoadedRef.current = true;
+      });
+
+    return () => {
+      cancelled = true;
+      if (httpCacheSaveTimerRef.current) clearTimeout(httpCacheSaveTimerRef.current);
+    };
   }, []);
+
+  useEffect(() => {
+    if (!httpCacheLoadedRef.current) return;
+
+    if (httpCacheSaveTimerRef.current) clearTimeout(httpCacheSaveTimerRef.current);
+    httpCacheSaveTimerRef.current = setTimeout(() => {
+      const cache: HttpPanelCache = {
+        method,
+        url,
+        headers,
+        body,
+        response,
+        activeTab,
+        useCliProxy,
+        requestExpanded,
+        responseHeadersExpanded,
+        savedAt: Date.now(),
+      };
+      lunelApi.storage.jsons.write(HTTP_PANEL_CACHE_KEY, cache).catch(() => {});
+    }, 500);
+  }, [activeTab, body, headers, method, requestExpanded, response, responseHeadersExpanded, url, useCliProxy]);
 
   const addHeader = () => {
     setHeaders([...headers, { id: Date.now().toString(), key: '', value: '', enabled: true }]);

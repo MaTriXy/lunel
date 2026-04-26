@@ -1320,7 +1320,7 @@ export default function TerminalPanel({
 }: PluginPanelProps) {
   const { colors, radius, fonts } = useTheme();
   const headerHeight = useHeaderHeight();
-  const { status } = useConnection();
+  const { status, isReconnecting } = useConnection();
   const isConnected = status === "connected";
   const { register, unregister } = useSessionRegistryActions();
   const { bottom: bottomInset } = useSafeAreaInsets();
@@ -1334,6 +1334,7 @@ export default function TerminalPanel({
   const processedLengthRef = useRef(0);
   const scrollOffsetRef = useRef<Map<string, number>>(new Map());
   const terminalStatesRef = useRef<Map<string, TerminalState>>(new Map());
+  const tabsRef = useRef<TerminalTab[]>([]);
   const [, setScrollRenderKey] = useState(0);
   const ctrlActiveRef = useRef(false);
   const altActiveRef = useRef(false);
@@ -1370,6 +1371,10 @@ export default function TerminalPanel({
   }, []);
 
   const terminalColors = colors.terminal as Record<string, string>;
+
+  useEffect(() => {
+    tabsRef.current = tabs;
+  }, [tabs]);
 
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const keyboardHeightSV = useSharedValue(0);
@@ -1425,11 +1430,12 @@ export default function TerminalPanel({
         setActiveTerminalVersion((version) => version + 1);
       }
 
-      if (state.title) {
+      const nextTitle = state.title;
+      if (nextTitle) {
         setTabs((prev) =>
           prev.map((tab) =>
-            tab.terminalId === terminalId && tab.title !== state.title
-              ? { ...tab, title: state.title }
+            tab.terminalId === terminalId && tab.title !== nextTitle
+              ? { ...tab, title: nextTitle }
               : tab,
           ),
         );
@@ -1467,6 +1473,34 @@ export default function TerminalPanel({
   // Resize all active terminals when dimensions change
   const dimensionsRef = useRef(dimensions);
   dimensionsRef.current = dimensions;
+
+  const refreshTerminalSnapshots = useCallback(() => {
+    if (!isActive || !isConnected) return;
+
+    for (const tab of tabsRef.current) {
+      if (!tab.terminalId || tab.exited) continue;
+      resize(tab.terminalId, dimensionsRef.current.cols, dimensionsRef.current.rows).catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!message.toLowerCase().includes("terminal not found")) return;
+
+        terminalStatesRef.current.delete(tab.terminalId!);
+        setTabs((prev) =>
+          prev.map((item) =>
+            item.terminalId === tab.terminalId
+              ? { ...item, exited: true, exitCode: undefined }
+              : item
+          )
+        );
+        setActiveTerminalVersion((version) => version + 1);
+      });
+    }
+  }, [isActive, isConnected, resize]);
+
+  useEffect(() => {
+    if (isReconnecting) return;
+    refreshTerminalSnapshots();
+  }, [isReconnecting, refreshTerminalSnapshots]);
+
   useEffect(() => {
     for (const tab of tabs) {
       if (tab.terminalId && !tab.exited) {
@@ -2136,6 +2170,39 @@ export default function TerminalPanel({
             );
           })
         )}
+        {tabs.length > 0 && (isReconnecting || !isConnected) ? (
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              top: 12,
+              right: 12,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              paddingHorizontal: 10,
+              paddingVertical: 7,
+              borderRadius: 999,
+              backgroundColor: terminalColors.bg,
+              borderWidth: 1,
+              borderColor: colors.border.secondary,
+              opacity: 0.92,
+            }}
+          >
+            <View style={{ width: 14, height: 14 }}>
+              <Loading color={terminalColors.fg} />
+            </View>
+            <Text
+              style={{
+                color: terminalColors.fg,
+                fontSize: 12,
+                fontFamily: fonts.sans.medium,
+              }}
+            >
+              Reconnecting terminal
+            </Text>
+          </View>
+        ) : null}
       </View>
 
       {hasBottomControls && (

@@ -11,6 +11,7 @@ const MANAGER_URL = 'https://manager.lunel.dev';
 const LAST_SESSION_STORAGE_KEY = 'lunel_last_session';
 const LAST_SESSION_FALLBACK_STORAGE_KEY = '@lunel_last_session_fallback';
 const PAIRED_SESSIONS_STORAGE_KEY = 'lunel_paired_sessions';
+const MAX_RECONNECT_ATTEMPTS = 5;
 
 // ============================================================================
 // Types
@@ -287,6 +288,13 @@ function isTerminalReconnectMessage(message: string): boolean {
   );
 }
 
+function isTerminalReconnectError(error: unknown): boolean {
+  if (error instanceof ProxyLookupError) {
+    return error.status === 401 || error.status === 403 || error.status === 404 || error.status === 410;
+  }
+  return isTerminalReconnectMessage(error instanceof Error ? error.message : String(error));
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -328,6 +336,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
   const networkReachableRef = useRef(true);
   const appStateRef = useRef(AppState.currentState);
   const reconnectAttemptRef = useRef(0);
+  const reconnectRunIdRef = useRef(0);
   const discoveredPortsRef = useRef<number[]>([]);
   const trackedPortsRef = useRef<number[]>([]);
 
@@ -335,12 +344,12 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
     setInteractionBlockReason(reason);
     setIsReconnecting(reason !== null);
     if (reason === 'offline') {
-      setStatus('connecting');
+      setStatus((current) => current === 'connected' ? 'connected' : 'connecting');
       setError('Waiting for internet connection...');
       return;
     }
     if (reason === 'reconnecting') {
-      setStatus('connecting');
+      setStatus((current) => current === 'connected' ? 'connected' : 'connecting');
       setError(null);
     }
   }, []);
@@ -466,8 +475,45 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
     await persistPairedSessions(deduped.slice(0, 50));
   }, [getPairedSessions, persistPairedSessions]);
 
+  const saveStoredSession = useCallback(async (session: StoredSession): Promise<void> => {
+    const raw = JSON.stringify(session);
+    try {
+      await SecureStore.setItemAsync(LAST_SESSION_STORAGE_KEY, raw);
+      await AsyncStorage.removeItem(LAST_SESSION_FALLBACK_STORAGE_KEY);
+    } catch (error) {
+      logger.warn('connection', 'failed to persist last session to secure store', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      await AsyncStorage.setItem(LAST_SESSION_FALLBACK_STORAGE_KEY, raw);
+    }
+  }, []);
+
   const getStoredSession = useCallback(async (): Promise<StoredSession | null> => {
-    return null;
+    try {
+      const secureRaw = await SecureStore.getItemAsync(LAST_SESSION_STORAGE_KEY);
+      const fallbackRaw = secureRaw ? null : await AsyncStorage.getItem(LAST_SESSION_FALLBACK_STORAGE_KEY);
+      const raw = secureRaw || fallbackRaw;
+      if (!raw) return null;
+
+      const parsed = JSON.parse(raw) as Partial<StoredSession>;
+      if (typeof parsed.sessionPassword !== 'string' || !parsed.sessionPassword) {
+        return null;
+      }
+
+      return {
+        sessionCode: typeof parsed.sessionCode === 'string' ? parsed.sessionCode : null,
+        sessionPassword: parsed.sessionPassword,
+        gateways: Array.isArray(parsed.gateways)
+          ? parsed.gateways.filter((gateway): gateway is string => typeof gateway === 'string' && gateway.length > 0)
+          : [],
+        savedAt: typeof parsed.savedAt === 'number' ? parsed.savedAt : Date.now(),
+      };
+    } catch (error) {
+      logger.warn('connection', 'failed to load last stored session', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
   }, []);
 
   const clearStoredSession = useCallback(async (): Promise<void> => {
@@ -889,6 +935,13 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
     networkReachableRef.current = true;
 
     if (sessionPasswordRef.current) {
+      await saveStoredSession({
+        sessionCode: sessionCodeRef.current,
+        sessionPassword: sessionPasswordRef.current,
+        gateways: gatewaysRef.current,
+        savedAt: Date.now(),
+      });
+
       try {
         await savePairedSession({
           sessionCode: sessionCodeRef.current,
@@ -905,7 +958,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
         });
       }
     }
-  }, [clearPendingRequests, clearStoredSession, generateId, savePairedSession, sendMessageV2]);
+  }, [clearStoredSession, generateId, savePairedSession, saveStoredSession, sendMessageV2]);
 
   const assembleWithCode = useCallback(async (code: string): Promise<AssembleResult> => {
     const wsUrl = `${MANAGER_URL.replace(/^https:/, 'wss:')}/v2/assemble?code=${encodeURIComponent(code)}&role=app`;
@@ -1115,7 +1168,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
       logger.error('connection', 'manager proxy lookup failed', { error: msg });
       return {
         ok: false,
-        terminal: isTerminalReconnectMessage(msg),
+        terminal: isTerminalReconnectError(err),
         message: msg,
       };
     }
@@ -1146,7 +1199,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
       });
       return {
         ok: false,
-        terminal: isTerminalReconnectMessage(message),
+        terminal: isTerminalReconnectError(err),
         message,
       };
     }
@@ -1163,14 +1216,25 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
       return;
     }
 
+    const runId = ++reconnectRunIdRef.current;
     reconnectLoopActiveRef.current = true;
     reconnectingRef.current = true;
 
     try {
-      const reconnectStartedAt = Date.now();
-      const reconnectWindowMs = 60_000;
+      while (
+        runId === reconnectRunIdRef.current &&
+        !manualDisconnectRef.current &&
+        sessionPasswordRef.current &&
+        reconnectAttemptRef.current < MAX_RECONNECT_ATTEMPTS
+      ) {
+        if (appStateRef.current !== 'active') {
+          logger.info('connection', 'reconnect loop paused while app is backgrounded', {
+            source,
+            attempt: reconnectAttemptRef.current,
+          });
+          return;
+        }
 
-      while (!manualDisconnectRef.current && sessionPasswordRef.current) {
         if (!networkReachableRef.current) {
           logger.info('connection', 'reconnect loop paused while offline', { source });
           setReconnectUiState('offline');
@@ -1180,8 +1244,15 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
         setReconnectUiState('reconnecting');
         clearPendingRequests('Reconnecting');
 
+        const attempt = reconnectAttemptRef.current + 1;
+        reconnectAttemptRef.current = attempt;
         const result = await reconnectWithPasswordRef.current!();
+        if (runId !== reconnectRunIdRef.current || manualDisconnectRef.current) {
+          return;
+        }
+
         if (result.ok) {
+          reconnectAttemptRef.current = 0;
           setReconnectUiState(null);
           return;
         }
@@ -1195,26 +1266,28 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
           return;
         }
 
-        if (Date.now() - reconnectStartedAt >= reconnectWindowMs) {
+        if (reconnectAttemptRef.current >= MAX_RECONNECT_ATTEMPTS) {
           logger.error('connection', 'reconnect window exhausted', {
             source,
-            durationMs: Date.now() - reconnectStartedAt,
+            attempts: reconnectAttemptRef.current,
             message: result.message ?? null,
           });
           setReconnectUiState(null);
           setStatus('error');
+          setSessionState('ended');
           setError(result.message || 'Automatic reconnect failed');
           return;
         }
 
-        const baseDelay = Math.min(500 * 2 ** Math.min(reconnectAttemptRef.current, 5), 5_000);
-        reconnectAttemptRef.current += 1;
+        const baseDelay = Math.min(500 * 2 ** Math.min(reconnectAttemptRef.current - 1, 5), 5_000);
         await delay(baseDelay);
       }
     } finally {
-      reconnectLoopActiveRef.current = false;
-      reconnectingRef.current = false;
-      if (networkReachableRef.current) {
+      if (runId === reconnectRunIdRef.current) {
+        reconnectLoopActiveRef.current = false;
+        reconnectingRef.current = false;
+      }
+      if (runId === reconnectRunIdRef.current && networkReachableRef.current) {
         setIsReconnecting(false);
       }
     }
@@ -1232,6 +1305,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
 
     logger.warn('connection', 'manager reachability lost; entering offline state');
     networkReachableRef.current = false;
+    reconnectRunIdRef.current += 1;
     reconnectLoopActiveRef.current = false;
     reconnectingRef.current = false;
     clearPendingRequests('Offline');
@@ -1260,6 +1334,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
     stopAllServers();
 
     if (clearState) {
+      reconnectRunIdRef.current += 1;
       reconnectLoopActiveRef.current = false;
       networkReachableRef.current = true;
       setIsReconnecting(false);
@@ -1302,6 +1377,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
   const connect = useCallback(async (payload: string) => {
     logger.info('connection', 'connect requested', { payloadPreview: payload.trim().slice(0, 32) });
     manualDisconnectRef.current = false;
+    reconnectRunIdRef.current += 1;
     reconnectingRef.current = false;
     reconnectLoopActiveRef.current = false;
     networkReachableRef.current = true;
@@ -1372,7 +1448,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
       setError(lastError.message);
       throw lastError;
     }
-  }, [assembleWithCode, cleanupSockets, connectToGatewayV2, getAssignedProxyUrl]);
+  }, [assembleWithCode, cleanupSockets, connectToGatewayV2, getAssignedProxyUrl, setReconnectUiState]);
 
   const resumeSession = useCallback(async (stored: StoredSession) => {
     logger.info('connection', 'resume requested', {
@@ -1380,6 +1456,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
       gatewayCount: stored?.gateways?.length ?? 0,
     });
     manualDisconnectRef.current = false;
+    reconnectRunIdRef.current += 1;
     reconnectingRef.current = false;
     reconnectLoopActiveRef.current = false;
     networkReachableRef.current = true;
@@ -1428,15 +1505,24 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
         error: err instanceof Error ? err.message : String(err),
       });
       const lastError = err instanceof Error ? err : new Error('Resume failed');
-      logger.error('connection', 'resume failed', {
+      if (isTerminalReconnectError(lastError)) {
+        logger.error('connection', 'resume failed with terminal session error', {
+          error: lastError.message,
+        });
+        setSessionState(toTerminalSessionState(undefined, lastError.message));
+        setStatus('error');
+        setError(lastError.message);
+        throw lastError;
+      }
+
+      logger.warn('connection', 'resume failed transiently; entering bounded reconnect loop', {
         error: lastError.message,
       });
-      setSessionState('expired');
-      setStatus('error');
-      setError(lastError.message);
-      throw lastError;
+      setReconnectUiState('reconnecting');
+      void runReconnectLoop('app_active');
+      return;
     }
-  }, [claimReattach, cleanupSockets, connectToGatewayV2]);
+  }, [claimReattach, cleanupSockets, connectToGatewayV2, runReconnectLoop, setReconnectUiState]);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (nextState) => {
@@ -1460,6 +1546,9 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
         }
         return;
       }
+      reconnectRunIdRef.current += 1;
+      reconnectLoopActiveRef.current = false;
+      reconnectingRef.current = false;
       stopAllServers();
     });
 
@@ -1526,10 +1615,6 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
       clearInterval(interval);
     };
   }, [handleConnectivityLost, handleConnectivityRestored]);
-
-  useEffect(() => {
-    void clearStoredSession();
-  }, [clearStoredSession]);
 
   useEffect(() => {
     logger.info('connection', 'provider state updated', {

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, memo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ScrollView,
   StyleSheet,
@@ -16,6 +17,13 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { PluginPanelProps } from '../../types';
 import { useApi, PortInfo, ApiError } from '@/hooks/useApi';
 
+const PORTS_PANEL_CACHE_STORAGE_KEY = '@lunel_ports_panel_cache_v1';
+
+type PortsPanelCache = {
+  portsList: PortInfo[];
+  savedAt: number;
+};
+
 function PortsPanel({ instanceId, isActive }: PluginPanelProps) {
   const { colors, fonts, spacing, radius } = useTheme();
   const headerHeight = useHeaderHeight();
@@ -27,23 +35,67 @@ function PortsPanel({ instanceId, isActive }: PluginPanelProps) {
   const [killingPorts, setKillingPorts] = useState<Set<number>>(new Set());
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const portsCacheLoadedRef = useRef(false);
+  const portsCacheSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const portsListRef = useRef<PortInfo[]>([]);
 
   const loadPorts = useCallback(async () => {
     if (!isConnected) {
-      setLoading(false);
+      if (portsListRef.current.length === 0) setLoading(false);
       return;
     }
     try {
       setError(null);
+      setLoading(portsListRef.current.length === 0);
       const result = await portsApi.list();
       setPortsList(result);
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to load ports';
-      setError(message);
+      if (portsListRef.current.length === 0) setError(message);
     } finally {
       setLoading(false);
     }
   }, [isConnected, portsApi]);
+
+  useEffect(() => {
+    portsListRef.current = portsList;
+  }, [portsList]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    AsyncStorage.getItem(PORTS_PANEL_CACHE_STORAGE_KEY)
+      .then((raw) => {
+        if (cancelled || !raw) return;
+        const parsed = JSON.parse(raw) as Partial<PortsPanelCache>;
+        const cachedPorts = Array.isArray(parsed.portsList) ? parsed.portsList : [];
+        setPortsList(cachedPorts);
+        portsListRef.current = cachedPorts;
+        if (cachedPorts.length > 0) setLoading(false);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) portsCacheLoadedRef.current = true;
+      });
+
+    return () => {
+      cancelled = true;
+      if (portsCacheSaveTimerRef.current) clearTimeout(portsCacheSaveTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!portsCacheLoadedRef.current) return;
+
+    if (portsCacheSaveTimerRef.current) clearTimeout(portsCacheSaveTimerRef.current);
+    portsCacheSaveTimerRef.current = setTimeout(() => {
+      const cache: PortsPanelCache = {
+        portsList,
+        savedAt: Date.now(),
+      };
+      AsyncStorage.setItem(PORTS_PANEL_CACHE_STORAGE_KEY, JSON.stringify(cache)).catch(() => {});
+    }, 400);
+  }, [portsList]);
 
   useEffect(() => {
     if (isActive && isConnected) loadPorts();
@@ -77,7 +129,7 @@ function PortsPanel({ instanceId, isActive }: PluginPanelProps) {
     .sort((a, b) => a.port - b.port)
     .filter(p => !searchQuery.trim() || p.port.toString().includes(searchQuery) || (p.process || '').toLowerCase().includes(searchQuery.toLowerCase()));
 
-  if (!isConnected) {
+  if (!isConnected && portsList.length === 0) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg.base }}>
         <Header title="Ports" colors={colors} />

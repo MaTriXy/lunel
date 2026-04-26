@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, memo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Text,
   TouchableOpacity,
@@ -34,6 +35,14 @@ function formatBytes(bytes: number, decimals = 1): string {
 const AUTO_REFRESH_MS = 1000;
 const CPU_HISTORY_SAMPLES = 40;
 const CORE_HISTORY_SAMPLES = 20;
+const MONITOR_PANEL_CACHE_STORAGE_KEY = '@lunel_monitor_panel_cache_v1';
+
+type MonitorPanelCache = {
+  systemInfo: SystemInfo | null;
+  cpuHistory: number[];
+  coreHistory: number[][];
+  savedAt: number;
+};
 
 function AnimatedBar({
   percent,
@@ -155,6 +164,9 @@ function MonitorPanel({ instanceId, isActive }: PluginPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [cpuHistory, setCpuHistory] = useState<number[]>([]);
   const [coreHistory, setCoreHistory] = useState<number[][]>([]);
+  const monitorCacheLoadedRef = useRef(false);
+  const monitorCacheSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const systemInfoRef = useRef<SystemInfo | null>(null);
 
   const getUsageColor = useCallback((percent: number): string => {
     if (percent < 50) return colors.terminal.green;
@@ -162,17 +174,62 @@ function MonitorPanel({ instanceId, isActive }: PluginPanelProps) {
     return colors.terminal.red;
   }, [colors.terminal.green, colors.terminal.red, colors.terminal.yellow]);
   const loadSystemInfo = useCallback(async () => {
-    if (!isConnected) { setLoading(false); return; }
+    if (!isConnected) { if (!systemInfoRef.current) setLoading(false); return; }
     try {
       setError(null);
+      setLoading(!systemInfoRef.current);
       const result = await monitorApi.system();
       setSystemInfo(result);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to load system info');
+      if (!systemInfoRef.current) setError(err instanceof ApiError ? err.message : 'Failed to load system info');
     } finally {
       setLoading(false);
     }
   }, [isConnected, monitorApi]);
+
+  useEffect(() => {
+    systemInfoRef.current = systemInfo;
+  }, [systemInfo]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    AsyncStorage.getItem(MONITOR_PANEL_CACHE_STORAGE_KEY)
+      .then((raw) => {
+        if (cancelled || !raw) return;
+        const parsed = JSON.parse(raw) as Partial<MonitorPanelCache>;
+        const cachedSystemInfo = parsed.systemInfo ?? null;
+        setSystemInfo(cachedSystemInfo);
+        setCpuHistory(Array.isArray(parsed.cpuHistory) ? parsed.cpuHistory : []);
+        setCoreHistory(Array.isArray(parsed.coreHistory) ? parsed.coreHistory : []);
+        systemInfoRef.current = cachedSystemInfo;
+        if (cachedSystemInfo) setLoading(false);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) monitorCacheLoadedRef.current = true;
+      });
+
+    return () => {
+      cancelled = true;
+      if (monitorCacheSaveTimerRef.current) clearTimeout(monitorCacheSaveTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!monitorCacheLoadedRef.current) return;
+
+    if (monitorCacheSaveTimerRef.current) clearTimeout(monitorCacheSaveTimerRef.current);
+    monitorCacheSaveTimerRef.current = setTimeout(() => {
+      const cache: MonitorPanelCache = {
+        systemInfo,
+        cpuHistory,
+        coreHistory,
+        savedAt: Date.now(),
+      };
+      AsyncStorage.setItem(MONITOR_PANEL_CACHE_STORAGE_KEY, JSON.stringify(cache)).catch(() => {});
+    }, 400);
+  }, [coreHistory, cpuHistory, systemInfo]);
 
   useEffect(() => {
     if (isActive && isConnected) loadSystemInfo();
@@ -197,7 +254,7 @@ function MonitorPanel({ instanceId, isActive }: PluginPanelProps) {
   }, [systemInfo]);
 
   // Not connected
-  if (!isConnected) {
+  if (!isConnected && !systemInfo) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.terminal.bg }}>
         <Header title="Monitor" colors={colors} />

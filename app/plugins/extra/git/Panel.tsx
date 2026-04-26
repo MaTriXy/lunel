@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef, memo } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Animated,
   Easing,
@@ -47,6 +48,17 @@ import InputModal from '@/components/InputModal';
 import ActionSheet from '@/components/ActionSheet';
 
 type Tab = 'changes' | 'history' | 'branches';
+
+const GIT_PANEL_CACHE_STORAGE_KEY = '@lunel_git_panel_cache_v1';
+
+type GitPanelCache = {
+  activeTab: Tab;
+  gitStatus: GitStatus | null;
+  commits: GitCommit[];
+  branches: { current: string; branches: string[] } | null;
+  commitLimit: number;
+  savedAt: number;
+};
 
 function SpinnerIcon({ size, color }: { size: number; color: string }) {
   const rotation = useRef(new Animated.Value(0)).current;
@@ -212,6 +224,9 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
   const commitLimitRef = useRef(50);
   const [loadingMore, setLoadingMore] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const gitCacheLoadedRef = useRef(false);
+  const gitCacheSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasGitSnapshotRef = useRef(false);
 
   const dismissGitInputs = useCallback(() => {
     TextInput.State.currentlyFocusedInput?.()?.blur?.();
@@ -259,10 +274,60 @@ function GitPanel({ instanceId, isActive }: PluginPanelProps) {
   }, [isConnected, git]);
 
   const loadAll = useCallback(async () => {
-    setLoading(true);
+    setLoading(!hasGitSnapshotRef.current);
     await Promise.all([loadStatus(), loadCommits(), loadBranches()]);
     setLoading(false);
   }, [loadStatus, loadCommits, loadBranches]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    AsyncStorage.getItem(GIT_PANEL_CACHE_STORAGE_KEY)
+      .then((raw) => {
+        if (cancelled || !raw) return;
+        const parsed = JSON.parse(raw) as Partial<GitPanelCache>;
+        const cachedLimit = typeof parsed.commitLimit === 'number' ? parsed.commitLimit : 50;
+        const cachedCommits = Array.isArray(parsed.commits) ? parsed.commits : [];
+
+        if (parsed.activeTab === 'changes' || parsed.activeTab === 'history' || parsed.activeTab === 'branches') {
+          setActiveTab(parsed.activeTab);
+        }
+        setGitStatus(parsed.gitStatus ?? null);
+        setCommits(cachedCommits);
+        setBranches(parsed.branches ?? null);
+        setCommitLimit(cachedLimit);
+        commitLimitRef.current = cachedLimit;
+        hasGitSnapshotRef.current = !!parsed.gitStatus || cachedCommits.length > 0 || !!parsed.branches;
+        if (hasGitSnapshotRef.current) setLoading(false);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) gitCacheLoadedRef.current = true;
+      });
+
+    return () => {
+      cancelled = true;
+      if (gitCacheSaveTimerRef.current) clearTimeout(gitCacheSaveTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    hasGitSnapshotRef.current = !!gitStatus || commits.length > 0 || !!branches;
+    if (!gitCacheLoadedRef.current) return;
+
+    if (gitCacheSaveTimerRef.current) clearTimeout(gitCacheSaveTimerRef.current);
+    gitCacheSaveTimerRef.current = setTimeout(() => {
+      const cache: GitPanelCache = {
+        activeTab,
+        gitStatus,
+        commits,
+        branches,
+        commitLimit,
+        savedAt: Date.now(),
+      };
+      AsyncStorage.setItem(GIT_PANEL_CACHE_STORAGE_KEY, JSON.stringify(cache)).catch(() => {});
+    }, 500);
+  }, [activeTab, branches, commitLimit, commits, gitStatus]);
 
   useEffect(() => {
     if (isConnected && isActive) loadAll();

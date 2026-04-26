@@ -70,6 +70,7 @@ import { innerApi } from "../../innerApi";
 import { PluginPanelProps } from "../../types";
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 const AI_DETAILED_VIEW_STORAGE_KEY = "ai-detailed-view-enabled";
+const AI_PANEL_CACHE_STORAGE_KEY = "@lunel_ai_panel_cache_v1";
 const TRANSCRIBE_ENDPOINT = "https://internal-api.lunel.dev/api/transcribe";
 const VOICE_WAVE_BAR_COUNT = Math.round(42 * (SCREEN_WIDTH / 390));
 const VOICE_WAVE_IDLE_LEVEL = 0.08;
@@ -84,6 +85,14 @@ interface AITab extends BaseTab {
   sessionId?: string;
   backend: "opencode" | "codex";
   updatedAt?: number;
+}
+
+interface AIPanelCache {
+  sessionTabs: AITab[];
+  activeTabId: string | null;
+  messagesMap: Record<string, AIMessage[]>;
+  codexUsageBySession: Record<string, { used?: number; total?: number }>;
+  savedAt: number;
 }
 
 const DEFAULT_OPENCODE_AGENTS: { id: string; name: string; icon?: React.ComponentType<any> }[] = [
@@ -2590,6 +2599,8 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
   const voiceWaveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const messagesListRef = useRef<FlashList<any>>(null);
   const messagesMapRef = useRef<Record<string, AIMessage[]>>({});
+  const aiCacheLoadedRef = useRef(false);
+  const aiCacheSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const streamingBySessionRef = useRef<Record<string, true>>({});
   const codexFinalSyncInFlightRef = useRef<Set<string>>(new Set());
   const isNearBottomRef = useRef(true);
@@ -2656,6 +2667,67 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
   useEffect(() => {
     messagesMapRef.current = messagesMap;
   }, [messagesMap]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadAiCache = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(AI_PANEL_CACHE_STORAGE_KEY);
+        if (!raw || cancelled) return;
+
+        const parsed = JSON.parse(raw) as Partial<AIPanelCache>;
+        const cachedSessionTabs = Array.isArray(parsed.sessionTabs) ? parsed.sessionTabs : [];
+        const cachedMessagesMap = parsed.messagesMap && typeof parsed.messagesMap === "object" ? parsed.messagesMap : {};
+        const cachedUsage = parsed.codexUsageBySession && typeof parsed.codexUsageBySession === "object"
+          ? parsed.codexUsageBySession
+          : {};
+        const cachedActiveTabId = typeof parsed.activeTabId === "string" ? parsed.activeTabId : null;
+
+        setSessionTabs(cachedSessionTabs);
+        setMessagesMap(cachedMessagesMap as Record<string, AIMessage[]>);
+        setCodexUsageBySession(cachedUsage);
+        setActiveTabId(
+          cachedActiveTabId && cachedSessionTabs.some((tab) => tab.id === cachedActiveTabId)
+            ? cachedActiveTabId
+            : cachedSessionTabs[cachedSessionTabs.length - 1]?.id ?? null
+        );
+      } catch {
+        // Cached chat state should never block opening the panel.
+      } finally {
+        aiCacheLoadedRef.current = true;
+      }
+    };
+
+    void loadAiCache();
+
+    return () => {
+      cancelled = true;
+      if (aiCacheSaveTimerRef.current) {
+        clearTimeout(aiCacheSaveTimerRef.current);
+        aiCacheSaveTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!aiCacheLoadedRef.current) return;
+    if (aiCacheSaveTimerRef.current) {
+      clearTimeout(aiCacheSaveTimerRef.current);
+    }
+
+    aiCacheSaveTimerRef.current = setTimeout(() => {
+      aiCacheSaveTimerRef.current = null;
+      const cache: AIPanelCache = {
+        sessionTabs,
+        activeTabId,
+        messagesMap,
+        codexUsageBySession,
+        savedAt: Date.now(),
+      };
+      AsyncStorage.setItem(AI_PANEL_CACHE_STORAGE_KEY, JSON.stringify(cache)).catch(() => {});
+    }, 600);
+  }, [activeTabId, codexUsageBySession, messagesMap, sessionTabs]);
 
   useEffect(() => {
     streamingBySessionRef.current = streamingBySession;
@@ -3203,7 +3275,7 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
   }, [ai]);
 
   useEffect(() => {
-    if (status !== "connected" || !isInitialized || !isActive || drawerStatus !== "open") return;
+    if (status !== "connected" || !isInitialized || !isActive) return;
 
     let cancelled = false;
     const refreshSessions = async () => {
@@ -3229,7 +3301,7 @@ export default function AIPanel({ instanceId, isActive, bottomBarHeight }: Plugi
     return () => {
       cancelled = true;
     };
-  }, [status, isInitialized, isActive, drawerStatus, ai, draftTabs]);
+  }, [status, isInitialized, isActive, ai, draftTabs]);
 
   useEffect(() => {
     if (!isDrawerOpen) return;

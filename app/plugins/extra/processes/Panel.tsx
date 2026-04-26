@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, memo } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ScrollView,
   StyleSheet,
@@ -29,6 +30,14 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { PluginPanelProps } from '../../types';
 import { useApi, ProcessInfo, ApiError } from '@/hooks/useApi';
 
+const PROCESSES_PANEL_CACHE_STORAGE_KEY = '@lunel_processes_panel_cache_v1';
+
+type ProcessesPanelCache = {
+  processList: ProcessInfo[];
+  selectedProcess: ProcessInfo | null;
+  processOutput: string;
+  savedAt: number;
+};
 
 function ProcessesPanel({ instanceId, isActive }: PluginPanelProps) {
   const { colors, fonts, spacing, radius, typography } = useTheme();
@@ -45,6 +54,9 @@ function ProcessesPanel({ instanceId, isActive }: PluginPanelProps) {
   const [selectedProcess, setSelectedProcess] = useState<ProcessInfo | null>(null);
   const [processOutput, setProcessOutput] = useState<string>('');
   const [outputLoading, setOutputLoading] = useState(false);
+  const processesCacheLoadedRef = useRef(false);
+  const processesCacheSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const processListRef = useRef<ProcessInfo[]>([]);
 
   // Spawn form state
   const [showSpawnForm, setShowSpawnForm] = useState(false);
@@ -57,21 +69,66 @@ function ProcessesPanel({ instanceId, isActive }: PluginPanelProps) {
   // Load processes
   const loadProcesses = useCallback(async () => {
     if (!isConnected) {
-      setLoading(false);
+      if (processListRef.current.length === 0) setLoading(false);
       return;
     }
 
     try {
       setError(null);
+      setLoading(processListRef.current.length === 0);
       const result = await processApi.list();
       setProcessList(result);
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to load processes';
-      setError(message);
+      if (processListRef.current.length === 0) setError(message);
     } finally {
       setLoading(false);
     }
   }, [isConnected, processApi]);
+
+  useEffect(() => {
+    processListRef.current = processList;
+  }, [processList]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    AsyncStorage.getItem(PROCESSES_PANEL_CACHE_STORAGE_KEY)
+      .then((raw) => {
+        if (cancelled || !raw) return;
+        const parsed = JSON.parse(raw) as Partial<ProcessesPanelCache>;
+        const cachedProcesses = Array.isArray(parsed.processList) ? parsed.processList : [];
+        setProcessList(cachedProcesses);
+        setSelectedProcess(parsed.selectedProcess ?? null);
+        setProcessOutput(typeof parsed.processOutput === 'string' ? parsed.processOutput : '');
+        processListRef.current = cachedProcesses;
+        if (cachedProcesses.length > 0 || parsed.selectedProcess) setLoading(false);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) processesCacheLoadedRef.current = true;
+      });
+
+    return () => {
+      cancelled = true;
+      if (processesCacheSaveTimerRef.current) clearTimeout(processesCacheSaveTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!processesCacheLoadedRef.current) return;
+
+    if (processesCacheSaveTimerRef.current) clearTimeout(processesCacheSaveTimerRef.current);
+    processesCacheSaveTimerRef.current = setTimeout(() => {
+      const cache: ProcessesPanelCache = {
+        processList,
+        selectedProcess,
+        processOutput,
+        savedAt: Date.now(),
+      };
+      AsyncStorage.setItem(PROCESSES_PANEL_CACHE_STORAGE_KEY, JSON.stringify(cache)).catch(() => {});
+    }, 400);
+  }, [processList, processOutput, selectedProcess]);
 
   // Load on mount and when active
   useEffect(() => {
@@ -90,6 +147,7 @@ function ProcessesPanel({ instanceId, isActive }: PluginPanelProps) {
   // Load output when process selected
   useEffect(() => {
     if (selectedProcess) {
+      if (!isConnected) return;
       setOutputLoading(true);
       processApi.getOutput(selectedProcess.channel)
         .then(output => setProcessOutput(output))
@@ -98,7 +156,7 @@ function ProcessesPanel({ instanceId, isActive }: PluginPanelProps) {
     } else {
       setProcessOutput('');
     }
-  }, [selectedProcess]);
+  }, [isConnected, processApi, selectedProcess]);
 
   const killProcess = async (pid: number) => {
     setProcessList(prev => prev.filter(p => p.pid !== pid));
@@ -193,7 +251,7 @@ function ProcessesPanel({ instanceId, isActive }: PluginPanelProps) {
     : processList;
 
   // Not connected view
-  if (!isConnected) {
+  if (!isConnected && processList.length === 0 && !selectedProcess) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg.base }}>
         <Header title="Processes" colors={colors} />

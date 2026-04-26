@@ -1,4 +1,5 @@
 import Loading from "@/components/Loading";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Header, { useHeaderHeight } from "@/components/Header";
 import { useConnection } from "@/contexts/ConnectionContext";
 import { useSessionRegistryActions } from "@/contexts/SessionRegistry";
@@ -54,6 +55,22 @@ interface DevsoleTabState {
   section: DevsoleSectionId;
   expanded: boolean;
 }
+
+const BROWSER_PANEL_CACHE_STORAGE_KEY = "@lunel_browser_panel_cache_v1";
+
+type BrowserPanelCache = {
+  tabs: Tab[];
+  activeTabId: string;
+  urlInput: string;
+  devsoleStateByTab: Record<string, DevsoleTabState>;
+  consoleEntriesByTab: Record<string, DevsoleConsoleEntry[]>;
+  networkEntriesByTab: Record<string, DevsoleNetworkEntry[]>;
+  elementsSnapshotByTab: Record<string, DevsoleElementsSnapshot | null>;
+  resourcesSnapshotByTab: Record<string, DevsoleResourcesSnapshot | null>;
+  infoSnapshotByTab: Record<string, DevsoleInfoSnapshot | null>;
+  pageUrlByTab: Record<string, string>;
+  savedAt: number;
+};
 
 function classifyBrowserUrl(rawUrl: string): {
   host: string | null;
@@ -233,6 +250,8 @@ export default function BrowserPanel({ bottomBarHeight }: PluginPanelProps) {
   const webViewRefs = useRef<{ [key: string]: WebView | null }>({});
   const urlInputRef = useRef<TextInput>(null);
   const pageUrlByTabRef = useRef<Record<string, string>>({ "1": "https://www.google.com" });
+  const browserCacheLoadedRef = useRef(false);
+  const browserCacheSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const activeDevsoleState = devsoleStateByTab[activeTabId] || getDefaultDevsoleState();
@@ -269,6 +288,74 @@ export default function BrowserPanel({ bottomBarHeight }: PluginPanelProps) {
       }
     );
   }, [collapsedDevsoleHeight, devsoleExpanded, devsoleHeight, expandedDevsoleHeight]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    AsyncStorage.getItem(BROWSER_PANEL_CACHE_STORAGE_KEY)
+      .then((raw) => {
+        if (cancelled || !raw) return;
+        const parsed = JSON.parse(raw) as Partial<BrowserPanelCache>;
+        const cachedTabs = Array.isArray(parsed.tabs)
+          ? parsed.tabs.map((tab) => ({ ...tab, loading: false, ready: true }))
+          : [];
+        setTabs(cachedTabs);
+        setActiveTabId(
+          parsed.activeTabId && cachedTabs.some((tab) => tab.id === parsed.activeTabId)
+            ? parsed.activeTabId
+            : cachedTabs[0]?.id ?? ""
+        );
+        setUrlInput(typeof parsed.urlInput === "string" ? parsed.urlInput : displayUrl(cachedTabs[0]?.url ?? ""));
+        setDevsoleStateByTab(parsed.devsoleStateByTab ?? {});
+        setConsoleEntriesByTab(parsed.consoleEntriesByTab ?? {});
+        setNetworkEntriesByTab(parsed.networkEntriesByTab ?? {});
+        setElementsSnapshotByTab(parsed.elementsSnapshotByTab ?? {});
+        setResourcesSnapshotByTab(parsed.resourcesSnapshotByTab ?? {});
+        setInfoSnapshotByTab(parsed.infoSnapshotByTab ?? {});
+        pageUrlByTabRef.current = parsed.pageUrlByTab ?? Object.fromEntries(cachedTabs.map((tab) => [tab.id, tab.url]));
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) browserCacheLoadedRef.current = true;
+      });
+
+    return () => {
+      cancelled = true;
+      if (browserCacheSaveTimerRef.current) clearTimeout(browserCacheSaveTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!browserCacheLoadedRef.current) return;
+
+    if (browserCacheSaveTimerRef.current) clearTimeout(browserCacheSaveTimerRef.current);
+    browserCacheSaveTimerRef.current = setTimeout(() => {
+      const cache: BrowserPanelCache = {
+        tabs: tabs.map((tab) => ({ ...tab, loading: false })),
+        activeTabId,
+        urlInput,
+        devsoleStateByTab,
+        consoleEntriesByTab,
+        networkEntriesByTab,
+        elementsSnapshotByTab,
+        resourcesSnapshotByTab,
+        infoSnapshotByTab,
+        pageUrlByTab: pageUrlByTabRef.current,
+        savedAt: Date.now(),
+      };
+      AsyncStorage.setItem(BROWSER_PANEL_CACHE_STORAGE_KEY, JSON.stringify(cache)).catch(() => {});
+    }, 600);
+  }, [
+    activeTabId,
+    consoleEntriesByTab,
+    devsoleStateByTab,
+    elementsSnapshotByTab,
+    infoSnapshotByTab,
+    networkEntriesByTab,
+    resourcesSnapshotByTab,
+    tabs,
+    urlInput,
+  ]);
 
   const devsoleAnimatedStyle = useAnimatedStyle(() => ({
     height: devsoleHeight.value,
@@ -2305,15 +2392,6 @@ export default function BrowserPanel({ bottomBarHeight }: PluginPanelProps) {
                   source={{ uri: tab.url }}
                   style={{ flex: 1 }}
                   forceDarkOn={isDark}
-                  injectedJavaScriptBeforeContentLoaded={`
-                    (function() {
-                      var meta = document.createElement('meta');
-                      meta.name = 'color-scheme';
-                      meta.content = '${isDark ? 'dark' : 'light'}';
-                      document.head.appendChild(meta);
-                    })();
-                    true;
-                  `}
                   textZoom={90}
                   cacheEnabled={false}
                   cacheMode="LOAD_NO_CACHE"
@@ -2481,6 +2559,15 @@ export default function BrowserPanel({ bottomBarHeight }: PluginPanelProps) {
                     }
                   }}
                   injectedJavaScriptBeforeContentLoaded={[
+                    `
+                      (function() {
+                        var meta = document.createElement('meta');
+                        meta.name = 'color-scheme';
+                        meta.content = '${isDark ? 'dark' : 'light'}';
+                        document.head.appendChild(meta);
+                      })();
+                      true;
+                    `.trim(),
                     trustedTypesSetupScript.trim(),
                     devsoleConsoleBootstrapScript.trim(),
                     devsoleNetworkBootstrapScript.trim(),

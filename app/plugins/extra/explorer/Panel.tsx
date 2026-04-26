@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef, memo } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import InfoSheet from '@/components/InfoSheet';
 import {
   ScrollView,
@@ -59,6 +60,15 @@ type SortOption = 'name' | 'size' | 'modified';
 type FilterOption = 'all' | 'files' | 'folders';
 type SearchMode = 'files' | 'codebase';
 type ExplorerListItem = FileEntry & { __navParent?: boolean };
+const EXPLORER_CACHE_STORAGE_KEY = '@lunel_explorer_cache_v1';
+
+interface ExplorerCache {
+  currentPath: string;
+  items: FileEntry[];
+  directoryItemCounts: Record<string, number>;
+  savedAt: number;
+}
+
 interface GroupedMatch {
   file: string;
   matches: GrepMatch[];
@@ -490,7 +500,70 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
   const repoFileSearchRequestIdRef = useRef(0);
   const directoryCountRequestIdRef = useRef(0);
   const lastLocalSearchPathRef = useRef(currentPath);
+  const explorerCacheLoadedRef = useRef(false);
+  const explorerCacheSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const itemsRef = useRef<FileEntry[]>([]);
   const MAX_UPLOAD_SIZE_BYTES = 15 * 1024 * 1024;
+
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadExplorerCache = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(EXPLORER_CACHE_STORAGE_KEY);
+        if (!raw || cancelled) return;
+
+        const parsed = JSON.parse(raw) as Partial<ExplorerCache>;
+        const cachedPath = typeof parsed.currentPath === 'string' && parsed.currentPath
+          ? parsed.currentPath
+          : '.';
+        const cachedItems = Array.isArray(parsed.items) ? parsed.items : [];
+        const cachedCounts = parsed.directoryItemCounts && typeof parsed.directoryItemCounts === 'object'
+          ? parsed.directoryItemCounts
+          : {};
+
+        setCurrentPath(cachedPath);
+        setItems(cachedItems);
+        setDirectoryItemCounts(cachedCounts);
+      } catch {
+        // Cached explorer state should never block opening the panel.
+      } finally {
+        explorerCacheLoadedRef.current = true;
+      }
+    };
+
+    void loadExplorerCache();
+
+    return () => {
+      cancelled = true;
+      if (explorerCacheSaveTimerRef.current) {
+        clearTimeout(explorerCacheSaveTimerRef.current);
+        explorerCacheSaveTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!explorerCacheLoadedRef.current) return;
+    if (explorerCacheSaveTimerRef.current) {
+      clearTimeout(explorerCacheSaveTimerRef.current);
+    }
+
+    explorerCacheSaveTimerRef.current = setTimeout(() => {
+      explorerCacheSaveTimerRef.current = null;
+      const cache: ExplorerCache = {
+        currentPath,
+        items,
+        directoryItemCounts,
+        savedAt: Date.now(),
+      };
+      AsyncStorage.setItem(EXPLORER_CACHE_STORAGE_KEY, JSON.stringify(cache)).catch(() => {});
+    }, 400);
+  }, [currentPath, directoryItemCounts, items]);
 
   const openWithSystem = async (item: FileEntry, pathOverride?: string) => {
     const filePath = pathOverride ?? (currentPath === '.' ? item.name : `${currentPath}/${item.name}`);
@@ -544,15 +617,18 @@ function ExplorerPanel({ instanceId, isActive }: PluginPanelProps) {
   const loadDirectory = useCallback(async (path: string) => {
     if (!isConnected) return;
 
-    setLoading(true);
+    const hasVisibleCache = itemsRef.current.length > 0;
+    setLoading(!hasVisibleCache);
     setError(null);
     try {
       const entries = await fs.list(path);
       setItems(entries);
     } catch (err) {
       const apiError = err as ApiError;
-      setError(apiError.message || 'Failed to load directory');
-      setItems([]);
+      if (!hasVisibleCache) {
+        setError(apiError.message || 'Failed to load directory');
+        setItems([]);
+      }
     } finally {
       setLoading(false);
       innerApi.refreshBottomBar();
