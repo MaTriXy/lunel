@@ -9,6 +9,14 @@
 </div><br />
 <p align="center">AI-powered mobile IDE and cloud development platform. Code on your phone, run on your machine or in secure cloud sandboxes.</p> <br />
 
+## Demo
+
+https://github.com/user-attachments/assets/9b7ee889-133c-40d6-ab8f-bc00ac6f1b65
+
+
+
+
+
 ## Structure
 
 | Directory | Description |
